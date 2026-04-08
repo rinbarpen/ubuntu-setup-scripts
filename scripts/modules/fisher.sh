@@ -16,10 +16,9 @@ fish -c "
 
 # nvm use latest — only if nvm was installed via languages.sh
 if [[ -f "$HOME/.nvm/nvm.sh" ]]; then
-  fish -c "
-    source ~/.nvm/nvm.sh 2>/dev/null || true
-    nvm use latest
-  " || log_warn "nvm use latest failed (non-fatal)"
+  # bass (installed above) lets fish source bash scripts
+  fish -c "bass source ~/.nvm/nvm.sh; nvm use latest" \
+    || log_warn "nvm use latest failed (non-fatal)"
 else
   log_warn "~/.nvm/nvm.sh not found — skipping nvm use latest. Run languages module first."
 fi

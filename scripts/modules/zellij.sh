@@ -12,9 +12,19 @@ else
   log_info "cargo not found — downloading zellij binary from GitHub..."
   ZELLIJ_VERSION=$(curl -fsSL https://api.github.com/repos/zellij-org/zellij/releases/latest \
     | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
-  ZELLIJ_URL="https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-x86_64-unknown-linux-musl.tar.gz"
+  if [[ -z "$ZELLIJ_VERSION" ]]; then
+    log_err "Failed to determine zellij version from GitHub API"
+    exit 1
+  fi
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)  ZELLIJ_ARCH="x86_64-unknown-linux-musl" ;;
+    aarch64) ZELLIJ_ARCH="aarch64-unknown-linux-musl" ;;
+    *)       log_err "Unsupported architecture: $ARCH"; exit 1 ;;
+  esac
+  ZELLIJ_URL="https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-${ZELLIJ_ARCH}.tar.gz"
   curl -fsSL "$ZELLIJ_URL" -o /tmp/zellij.tar.gz
-  tar -xzf /tmp/zellij.tar.gz -C /tmp zellij
+  tar -xzf /tmp/zellij.tar.gz -C /tmp
   sudo mv /tmp/zellij /usr/local/bin/zellij
   sudo chmod +x /usr/local/bin/zellij
   rm /tmp/zellij.tar.gz

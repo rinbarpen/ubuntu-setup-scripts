@@ -7,7 +7,7 @@ log_info "Installing fish shell..."
 sudo apt-get install -y fish
 
 if confirm "Set fish as default shell?"; then
-  chsh -s "$(which fish)"
+  chsh -s "$(which fish)" || log_warn "chsh failed — fish may not be in /etc/shells, set manually"
 fi
 
 # Proxy address
@@ -46,7 +46,8 @@ function proxy_status
 end
 EOF
 
-# Bash equivalents
+# Bash equivalents (guard against duplicate entries)
+if ! grep -q "proxy_on()" "$HOME/.bashrc" 2>/dev/null; then
 cat >> "$HOME/.bashrc" << EOF
 
 # Proxy helpers (added by setup)
@@ -55,5 +56,6 @@ proxy_on()     { export http_proxy=\$PROXY_ADDR https_proxy=\$PROXY_ADDR all_pro
 proxy_off()    { unset http_proxy https_proxy all_proxy; echo "Proxy OFF"; }
 proxy_status() { echo "http_proxy: \$http_proxy"; echo "https_proxy: \$https_proxy"; echo "all_proxy: \$all_proxy"; }
 EOF
+fi
 
 log_info "shell: done"

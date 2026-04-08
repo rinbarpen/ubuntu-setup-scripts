@@ -29,6 +29,9 @@ if echo "$SELECTED" | grep -Fqw "virtualbox"; then
 fi
 
 if echo "$SELECTED" | grep -Fqw "kvm"; then
+  if command -v virsh &>/dev/null; then
+    log_info "QEMU/KVM already installed, skipping"
+  else
   log_info "Installing QEMU/KVM..."
   sudo apt-get install -y \
     qemu-kvm libvirt-daemon-system virt-manager bridge-utils
@@ -36,6 +39,7 @@ if echo "$SELECTED" | grep -Fqw "kvm"; then
   sudo usermod -aG kvm "$USER"
   sudo systemctl enable --now libvirtd
   log_info "QEMU/KVM installed. Re-login required."
+  fi
 fi
 
 log_info "vms: done"
