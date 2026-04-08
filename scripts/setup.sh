@@ -31,12 +31,13 @@ SELECTED=$(echo "$CHOICES" | tr -d '"')
 declare -A EXIT_CODES
 
 for module in "${ORDERED[@]}"; do
-  if echo "$SELECTED" | grep -qw "$module"; then
+  if echo "$SELECTED" | grep -Fqw "$module"; then
     log_info "==> Running module: $module"
     if bash "${SCRIPT_DIR}/modules/${module}.sh"; then
       EXIT_CODES[$module]="OK"
     else
-      EXIT_CODES[$module]="FAIL (exit $?)"
+      rc=$?
+      EXIT_CODES[$module]="FAIL (exit $rc)"
       log_warn "Module $module failed — continuing"
     fi
   fi

@@ -8,7 +8,7 @@ log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_err()   { echo -e "${RED}[ERR]${NC}   $*" >&2; }
 
-# Assert command exists or abort current script
+# Assert command exists or abort the calling script (calls exit 1, not return)
 need_cmd() {
   if ! command -v "$1" &>/dev/null; then
     log_err "Required command not found: $1"
