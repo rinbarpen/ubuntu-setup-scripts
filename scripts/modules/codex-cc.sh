@@ -20,16 +20,18 @@ if confirm "Grant Claude Code full Bash/file access (full-auto mode)?"; then
   if [[ -f "$CLAUDE_SETTINGS" ]]; then
     # Merge: preserve existing keys, overwrite permissions
     TMP=$(mktemp)
-    python3 -c "
+    python3 - "$CLAUDE_SETTINGS" > "$TMP" << 'PYEOF'
 import json, sys
-with open('$CLAUDE_SETTINGS') as f:
+path = sys.argv[1]
+with open(path) as f:
     s = json.load(f)
 s['permissions'] = {
     'allow': ['Bash(*)', 'Read(*)', 'Write(*)', 'Edit(*)', 'Glob(*)', 'Grep(*)'],
     'deny': []
 }
 print(json.dumps(s, indent=2))
-" > "$TMP" && mv "$TMP" "$CLAUDE_SETTINGS"
+PYEOF
+    mv "$TMP" "$CLAUDE_SETTINGS"
   else
     cat > "$CLAUDE_SETTINGS" << 'EOF'
 {
@@ -50,7 +52,7 @@ mkdir -p "$PROFILES_DIR"
 while confirm "Add a provider profile for codex/cc?"; do
   echo "Providers: anthropic / openai / openrouter / custom"
   read -r -p "Provider name: " PROVIDER
-  read -r -p "API key: " API_KEY
+  read -r -s -p "API key: " API_KEY; echo ""
 
   case "$PROVIDER" in
     anthropic)
@@ -111,7 +113,7 @@ end
 EOF
 
 # bash equivalent (guard against duplicate entries)
-if ! grep -q "cc-switch()" "$HOME/.bashrc" 2>/dev/null; then
+if ! grep -q "# cc-switch (added by setup)" "$HOME/.bashrc" 2>/dev/null; then
 cat >> "$HOME/.bashrc" << 'BASHEOF'
 
 # cc-switch (added by setup)
@@ -144,7 +146,7 @@ function codex_auth
 end
 EOF
 
-if ! grep -q "codex-auth()" "$HOME/.bashrc" 2>/dev/null; then
+if ! grep -q "# codex-auth (added by setup)" "$HOME/.bashrc" 2>/dev/null; then
 cat >> "$HOME/.bashrc" << 'BASHEOF'
 
 # codex-auth (added by setup)
