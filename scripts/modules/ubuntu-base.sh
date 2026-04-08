@@ -17,24 +17,28 @@ sudo apt-get install -y \
 if sudo apt-get install -y nvtop 2>/dev/null; then
   log_info "nvtop installed via apt"
 else
-  log_warn "nvtop not in apt, trying pip..."
-  pip3 install nvtop 2>/dev/null || log_warn "nvtop install failed, skipping"
+  log_warn "nvtop not available via apt, skipping"
 fi
 
 # Docker
-log_info "Installing Docker..."
-sudo apt-get install -y ca-certificates gnupg lsb-release
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update -qq
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker "$USER"
-log_info "Docker installed. Re-login required for group membership."
+if command -v docker &>/dev/null; then
+  log_info "Docker already installed, skipping"
+else
+  log_info "Installing Docker..."
+  sudo apt-get install -y ca-certificates gnupg lsb-release
+  sudo install -m 0755 -d /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+      | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  fi
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt-get update -qq
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  sudo usermod -aG docker "$USER"
+  log_info "Docker installed. Re-login required for group membership."
+fi
 
 # xrdp
 log_info "Installing xrdp..."

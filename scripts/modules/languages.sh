@@ -9,8 +9,9 @@ export NVM_DIR="$HOME/.nvm"
 if [[ ! -d "$NVM_DIR" ]]; then
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 fi
+# nvm.sh uses unbound variables internally; temporarily relax set -u
 # shellcheck source=/dev/null
-source "$NVM_DIR/nvm.sh"
+set +u; source "$NVM_DIR/nvm.sh"; set -u
 nvm install --lts
 nvm use --lts
 log_info "Node $(node -v) installed"
@@ -41,16 +42,27 @@ fi
 
 # --- uv ---
 log_info "Installing uv..."
-curl -LsSf https://astral.sh/uv/install.sh | sh
+if ! command -v uv &>/dev/null; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+else
+  log_info "uv already installed, skipping"
+fi
 
 # --- Go ---
 log_info "Installing Go..."
-GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
-GO_TARBALL="${GO_VERSION}.linux-amd64.tar.gz"
-curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o "/tmp/${GO_TARBALL}"
-sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
-rm "/tmp/${GO_TARBALL}"
+GO_LATEST=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+GO_CURRENT=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}' || echo "none")
+if [[ "$GO_CURRENT" == "$GO_LATEST" ]]; then
+  log_info "Go $GO_LATEST already installed, skipping"
+else
+  GO_TARBALL="${GO_LATEST}.linux-amd64.tar.gz"
+  curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o "/tmp/${GO_TARBALL}"
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
+  rm "/tmp/${GO_TARBALL}"
+  log_info "Go ${GO_LATEST} installed"
+fi
+GO_VERSION="$GO_LATEST"
 
 # Add Go to PATH in bashrc
 if ! grep -q '/usr/local/go/bin' "$HOME/.bashrc"; then
