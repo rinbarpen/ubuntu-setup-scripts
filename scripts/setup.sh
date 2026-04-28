@@ -8,10 +8,10 @@ need_cmd whiptail
 sudo_check
 
 # Ordered list — respects dependencies (languages before fisher, shell before fisher)
-ORDERED=(ubuntu-base languages shell fisher git zerotier zellij browsers vms openclaw codex-cc)
+ORDERED=(ubuntu-base languages shell fisher git zerotier zellij browsers vms openclaw codex-cc vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
-  "Select modules to install (SPACE to toggle, ENTER to confirm):" 24 60 11 \
+  "Select modules to install (SPACE to toggle, ENTER to confirm):" 26 60 12 \
   "ubuntu-base"  "System tools, Docker, xrdp"          ON \
   "languages"    "nvm/Node, Python, Rust, Go, uv"      ON \
   "shell"        "fish shell + proxy functions"         ON \
@@ -22,7 +22,9 @@ CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "browsers"     "Chrome, Firefox"                     OFF \
   "vms"          "VirtualBox, QEMU/KVM"                OFF \
   "openclaw"     "openclaw (npm)"                      OFF \
-  "codex-cc"     "codex CLI + Claude Code"             ON \
+  "codex-cc"     "codex CLI + Claude Code + MCP"       ON \
+  "vibma"        "Vibma MCP + Figma plugin + skills"   OFF \
+  "skills"       "Claude Code skill collections"       OFF \
   3>&1 1>&2 2>&3) || { log_warn "Cancelled."; exit 0; }
 
 # Strip quotes from whiptail output

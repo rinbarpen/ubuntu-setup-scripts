@@ -159,4 +159,194 @@ codex-auth() {
 BASHEOF
 fi
 
+# MCP Toolkits — scenario-based selection
+if command -v whiptail &>/dev/null; then
+  SCENARIO_CHOICES=$(whiptail --title "MCP Toolkits" --checklist \
+    "Select toolkits to configure (SPACE to toggle):" 20 65 8 \
+    "frontend"   "前端开发: context7, excalidraw, puppeteer"  OFF \
+    "backend"    "后端开发: context7, github, postgres, sqlite" OFF \
+    "testing"    "测试:     context7, github, puppeteer"       OFF \
+    "analyst"    "分析师:   brave-search, context7, postgres"  OFF \
+    "stock"      "股票:     brave-search, context7"            OFF \
+    "marketing"  "市场:     brave-search, excalidraw"          OFF \
+    "daily"      "日常:     brave-search, context7"            ON  \
+    "chat"       "对话:     brave-search, context7"            ON  \
+    3>&1 1>&2 2>&3) || SCENARIO_CHOICES=""
+  SCENARIOS=$(echo "$SCENARIO_CHOICES" | tr -d '"')
+else
+  log_warn "whiptail not found — skipping MCP toolkit selection"
+  SCENARIOS=""
+fi
+
+if [[ -n "$SCENARIOS" ]]; then
+  # Compute union of required MCP servers across selected scenarios
+  declare -A NEED_MCP
+  for scenario in $SCENARIOS; do
+    case "$scenario" in
+      frontend)  NEED_MCP[context7]=1; NEED_MCP[excalidraw]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
+      backend)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[postgres]=1; NEED_MCP[sqlite]=1 ;;
+      testing)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
+      analyst)   NEED_MCP[brave-search]=1; NEED_MCP[context7]=1; NEED_MCP[postgres]=1; NEED_MCP[sqlite]=1 ;;
+      stock)     NEED_MCP[brave-search]=1; NEED_MCP[context7]=1 ;;
+      marketing) NEED_MCP[brave-search]=1; NEED_MCP[excalidraw]=1 ;;
+      daily)     NEED_MCP[brave-search]=1; NEED_MCP[context7]=1 ;;
+      chat)      NEED_MCP[brave-search]=1; NEED_MCP[context7]=1 ;;
+    esac
+  done
+
+  # Collect credentials only for servers that are needed
+  BRAVE_API_KEY=""
+  if [[ -n "${NEED_MCP[brave-search]+x}" ]]; then
+    read -r -p "BRAVE_API_KEY (leave empty to skip brave-search): " BRAVE_API_KEY
+    [[ -z "$BRAVE_API_KEY" ]] && log_warn "No BRAVE_API_KEY — skipping brave-search" && unset "NEED_MCP[brave-search]"
+  fi
+
+  GITHUB_TOKEN=""
+  if [[ -n "${NEED_MCP[github]+x}" ]]; then
+    read -r -s -p "GitHub Personal Access Token (leave empty to skip github): " GITHUB_TOKEN; echo ""
+    [[ -z "$GITHUB_TOKEN" ]] && log_warn "No GitHub token — skipping github" && unset "NEED_MCP[github]"
+  fi
+
+  POSTGRES_DSN=""
+  if [[ -n "${NEED_MCP[postgres]+x}" ]]; then
+    read -r -p "Postgres connection string (leave empty to skip): " POSTGRES_DSN
+    [[ -z "$POSTGRES_DSN" ]] && log_warn "No Postgres DSN — skipping postgres" && unset "NEED_MCP[postgres]"
+  fi
+
+  SQLITE_PATH="$HOME/data.db"
+  if [[ -n "${NEED_MCP[sqlite]+x}" ]]; then
+    read -r -p "SQLite DB path [${SQLITE_PATH}]: " _sqlite_input
+    [[ -n "$_sqlite_input" ]] && SQLITE_PATH="$_sqlite_input"
+  fi
+
+  # Serialize the needed servers as a space-separated string for python3
+  NEED_SERVERS="${!NEED_MCP[*]}"
+
+  python3 - "$CLAUDE_SETTINGS" "$NEED_SERVERS" \
+      "$BRAVE_API_KEY" "$GITHUB_TOKEN" "$POSTGRES_DSN" "$SQLITE_PATH" << 'PYEOF'
+import json, sys
+
+path      = sys.argv[1]
+servers   = sys.argv[2].split()
+brave_key = sys.argv[3]
+gh_token  = sys.argv[4]
+pg_dsn    = sys.argv[5]
+sqlite_p  = sys.argv[6]
+
+try:
+    with open(path) as f:
+        s = json.load(f)
+except Exception:
+    s = {}
+
+mcp = s.setdefault('mcpServers', {})
+
+if 'context7' in servers:
+    mcp['context7'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@upstash/context7-mcp@latest']
+    }
+if 'excalidraw' in servers:
+    mcp['excalidraw'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@anthropic-ai/mcp-server-excalidraw']
+    }
+if 'puppeteer' in servers:
+    mcp['puppeteer'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@modelcontextprotocol/server-puppeteer']
+    }
+if 'github' in servers and gh_token:
+    mcp['github'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@modelcontextprotocol/server-github'],
+        'env': {'GITHUB_PERSONAL_ACCESS_TOKEN': gh_token}
+    }
+if 'brave-search' in servers and brave_key:
+    mcp['brave-search'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@modelcontextprotocol/server-brave-search'],
+        'env': {'BRAVE_API_KEY': brave_key}
+    }
+if 'postgres' in servers and pg_dsn:
+    mcp['postgres'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@modelcontextprotocol/server-postgres', pg_dsn]
+    }
+if 'sqlite' in servers:
+    mcp['sqlite'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@modelcontextprotocol/server-sqlite', '--db-path', sqlite_p]
+    }
+if 'dev-chrome' in servers:
+    mcp['claude-in-chrome'] = {
+        'type': 'stdio', 'command': 'npx',
+        'args': ['-y', '@anthropic-ai/claude-in-chrome-mcp']
+    }
+
+with open(path, 'w') as f:
+    json.dump(s, f, indent=2)
+    f.write('\n')
+PYEOF
+
+  log_info "MCP toolkit servers written to $CLAUDE_SETTINGS"
+
+  # Write codex MCP config (~/.codex/config.yaml)
+  CODEX_CFG="$HOME/.codex/config.yaml"
+  mkdir -p "$(dirname "$CODEX_CFG")"
+  python3 - "$CODEX_CFG" "$NEED_SERVERS" \
+      "$BRAVE_API_KEY" "$GITHUB_TOKEN" "$POSTGRES_DSN" "$SQLITE_PATH" << 'PYEOF'
+import sys, os
+
+codex_path = sys.argv[1]
+servers    = sys.argv[2].split()
+brave_key  = sys.argv[3]
+gh_token   = sys.argv[4]
+pg_dsn     = sys.argv[5]
+sqlite_p   = sys.argv[6]
+
+lines = []
+if os.path.exists(codex_path):
+    with open(codex_path) as f:
+        lines = f.readlines()
+
+# Strip existing mcpServers block
+out, in_block = [], False
+for line in lines:
+    if line.startswith('mcpServers:'):
+        in_block = True; continue
+    if in_block and (line.startswith(' ') or line.startswith('\t')):
+        continue
+    in_block = False
+    out.append(line)
+
+entries = []
+if 'context7' in servers:
+    entries.append('  context7:\n    command: npx\n    args: ["-y", "@upstash/context7-mcp@latest"]\n')
+if 'excalidraw' in servers:
+    entries.append('  excalidraw:\n    command: npx\n    args: ["-y", "@anthropic-ai/mcp-server-excalidraw"]\n')
+if 'puppeteer' in servers:
+    entries.append('  puppeteer:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-puppeteer"]\n')
+if 'github' in servers and gh_token:
+    entries.append('  github:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-github"]\n    env:\n      GITHUB_PERSONAL_ACCESS_TOKEN: "{}"\n'.format(gh_token))
+if 'brave-search' in servers and brave_key:
+    entries.append('  brave-search:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-brave-search"]\n    env:\n      BRAVE_API_KEY: "{}"\n'.format(brave_key))
+if 'postgres' in servers and pg_dsn:
+    entries.append('  postgres:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-postgres", "{}"]\n'.format(pg_dsn))
+if 'sqlite' in servers:
+    entries.append('  sqlite:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "{}"]\n'.format(sqlite_p))
+if 'dev-chrome' in servers:
+    entries.append('  claude-in-chrome:\n    command: npx\n    args: ["-y", "@anthropic-ai/claude-in-chrome-mcp"]\n')
+
+if entries:
+    out.append('mcpServers:\n')
+    out.extend(entries)
+
+with open(codex_path, 'w') as f:
+    f.writelines(out)
+PYEOF
+
+  log_info "Codex MCP config written to $CODEX_CFG"
+fi
+
 log_info "codex-cc: done"
