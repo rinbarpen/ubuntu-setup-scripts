@@ -7,8 +7,8 @@ need_cmd whiptail
 
 sudo_check
 
-# Ordered list — respects dependencies (languages before fisher, shell before fisher)
-ORDERED=(ubuntu-base languages shell fisher git zerotier zellij browsers vms openclaw codex-cc vibma skills)
+# Ordered list — respects dependencies (languages before npm-based AI CLIs, shell before fisher)
+ORDERED=(ubuntu-base languages shell fisher git zerotier zellij browsers vms openclaw opencode codex-cc vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "Select modules to install (SPACE to toggle, ENTER to confirm):" 26 60 12 \
@@ -22,6 +22,7 @@ CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "browsers"     "Chrome, Firefox"                     OFF \
   "vms"          "VirtualBox, QEMU/KVM"                OFF \
   "openclaw"     "openclaw (npm)"                      OFF \
+  "opencode"     "opencode CLI + MCP"                  ON \
   "codex-cc"     "codex CLI + Claude Code + MCP"       ON \
   "vibma"        "Vibma MCP + Figma plugin + skills"   OFF \
   "skills"       "Claude Code skill collections"       OFF \

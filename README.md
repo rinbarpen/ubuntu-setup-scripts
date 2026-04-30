@@ -28,6 +28,7 @@ bash scripts/modules/git.sh
 | `browsers` | Chrome, Firefox |
 | `vms` | VirtualBox, QEMU/KVM |
 | `openclaw` | openclaw (npm) |
+| `opencode` | opencode CLI + defaults + MCP |
 | `codex-cc` | codex CLI + Claude Code + cc-switch + codex-auth |
 | `vibma` | Vibma MCP + Figma plugin installer + Figma skills |
 | `skills` | Install and register external skill collections |
