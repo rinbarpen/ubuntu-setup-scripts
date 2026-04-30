@@ -33,6 +33,18 @@ bash scripts/modules/git.sh
 | `vibma` | Vibma MCP + Figma plugin installer + Figma skills |
 | `skills` | Install and register external skill collections |
 
+## Agent Tool Defaults
+
+The agent modules write current default config targets:
+
+| Tool | Config file |
+|------|-------------|
+| Codex | `~/.codex/config.toml` |
+| Claude Code | `~/.claude/settings.json` |
+| opencode | `~/.config/opencode/opencode.json` |
+
+`codex-cc` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
+
 ## Structure
 
 ```

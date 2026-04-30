@@ -109,78 +109,48 @@ PYEOF
 }
 
 write_codex_settings() {
-  local codex_cfg="$HOME/.codex/config.yaml"
+  local codex_cfg="$HOME/.codex/config.toml"
+  local legacy_cfg="$HOME/.codex/config.yaml"
   mkdir -p "$(dirname "$codex_cfg")"
-  [[ -f "$codex_cfg" ]] || : > "$codex_cfg"
+  if [[ -f "$legacy_cfg" ]]; then
+    log_warn "Found legacy Codex config at ${legacy_cfg}; current Codex CLI uses ${codex_cfg}. Leaving legacy file unchanged."
+  fi
 
   python3 - "$codex_cfg" "$PORT" << 'PYEOF'
+import json
+import pathlib
 import re
 import sys
 
-path = sys.argv[1]
+path = pathlib.Path(sys.argv[1])
 port = sys.argv[2]
 
-with open(path, "r") as f:
-    lines = f.readlines()
+def q(value):
+    return json.dumps(value)
 
-if not lines:
-    lines = []
+lines = path.read_text().splitlines(True) if path.exists() else []
+table_re = re.compile(r'^\s*\[([^\]]+)\]\s*$')
+out = []
+skip = False
+for line in lines:
+    match = table_re.match(line)
+    if match:
+        table = match.group(1)
+        skip = table in {f"mcp_servers.{q('Vibma')}", "mcp_servers.Vibma"}
+    if not skip:
+        out.append(line)
 
-vibma_block = [
-    "  Vibma:\n",
-    "    command: npx\n",
-    f'    args: ["-y", "@ufira/vibma@latest", "--edit", "--port={port}"]\n',
-]
+while out and not out[-1].strip():
+    out.pop()
 
-def top_level_key(line: str) -> bool:
-    return bool(re.match(r"^[A-Za-z0-9_-]+:\s*", line))
+out.extend([
+    "\n",
+    f"[mcp_servers.{q('Vibma')}]\n",
+    f"command = {q('npx')}\n",
+    "args = [" + ", ".join(q(arg) for arg in ["-y", "@ufira/vibma@latest", "--edit", f"--port={port}"]) + "]\n",
+])
 
-def server_key(line: str) -> bool:
-    return bool(re.match(r"^  [A-Za-z0-9_.-]+:\s*", line))
-
-mcp_idx = -1
-for i, line in enumerate(lines):
-    if re.match(r"^mcpServers:\s*$", line):
-        mcp_idx = i
-        break
-
-if mcp_idx == -1:
-    if lines and lines[-1].strip():
-        lines.append("\n")
-    lines.append("mcpServers:\n")
-    lines.extend(vibma_block)
-else:
-    body_start = mcp_idx + 1
-    body_end = len(lines)
-    for i in range(body_start, len(lines)):
-        if top_level_key(lines[i]):
-            body_end = i
-            break
-
-    body = lines[body_start:body_end]
-    vibma_start = -1
-    vibma_end = -1
-    for i, line in enumerate(body):
-        if re.match(r"^  Vibma:\s*$", line):
-            vibma_start = i
-            vibma_end = i + 1
-            for j in range(i + 1, len(body)):
-                if server_key(body[j]):
-                    vibma_end = j
-                    break
-                vibma_end = j + 1
-            break
-
-    if vibma_start != -1:
-        body = body[:vibma_start] + body[vibma_end:]
-
-    if body and body[-1].strip():
-        body.append("\n")
-    body.extend(vibma_block)
-    lines = lines[:body_start] + body + lines[body_end:]
-
-with open(path, "w") as f:
-    f.writelines(lines)
+path.write_text("".join(out))
 PYEOF
 
   log_info "Codex MCP server 'Vibma' written to ${codex_cfg}"

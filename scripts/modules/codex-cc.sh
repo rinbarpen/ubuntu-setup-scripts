@@ -5,6 +5,10 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 
 need_cmd npm
 
+CODEX_CFG="$HOME/.codex/config.toml"
+CODEX_LEGACY_CFG="$HOME/.codex/config.yaml"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+
 # Install CLIs
 log_info "Installing codex CLI..."
 npm install -g @openai/codex
@@ -12,38 +16,83 @@ npm install -g @openai/codex
 log_info "Installing Claude Code..."
 npm install -g @anthropic-ai/claude-code
 
-# Full-auto permissions for Claude Code
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-
-if confirm "Grant Claude Code full Bash/file access (full-auto mode)?"; then
-  if [[ -f "$CLAUDE_SETTINGS" ]]; then
-    # Merge: preserve existing keys, overwrite permissions
-    TMP=$(mktemp)
-    python3 - "$CLAUDE_SETTINGS" > "$TMP" << 'PYEOF'
-import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    s = json.load(f)
-s['permissions'] = {
-    'allow': ['Bash(*)', 'Read(*)', 'Write(*)', 'Edit(*)', 'Glob(*)', 'Grep(*)'],
-    'deny': []
-}
-print(json.dumps(s, indent=2))
-PYEOF
-    mv "$TMP" "$CLAUDE_SETTINGS"
-  else
-    cat > "$CLAUDE_SETTINGS" << 'EOF'
-{
-  "permissions": {
-    "allow": ["Bash(*)", "Read(*)", "Write(*)", "Edit(*)", "Glob(*)", "Grep(*)"],
-    "deny": []
-  }
-}
-EOF
-  fi
-  log_info "Full-auto permissions written to $CLAUDE_SETTINGS"
+if [[ -f "$CODEX_LEGACY_CFG" ]]; then
+  log_warn "Found legacy Codex config at $CODEX_LEGACY_CFG; current Codex CLI uses $CODEX_CFG. Leaving legacy file unchanged."
 fi
+
+mkdir -p "$(dirname "$CODEX_CFG")" "$(dirname "$CLAUDE_SETTINGS")"
+
+python3 - "$CODEX_CFG" << 'PYEOF'
+import json
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+managed = {
+    "model": "gpt-5.5",
+    "model_reasoning_effort": "medium",
+    "plan_mode_reasoning_effort": "xhigh",
+    "approval_policy": "on-request",
+    "sandbox_mode": "workspace-write",
+}
+
+lines = path.read_text().splitlines(True) if path.exists() else []
+key_re = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=")
+table_re = re.compile(r"^\s*\[")
+
+top, rest = [], []
+in_tables = False
+for line in lines:
+    if table_re.match(line):
+        in_tables = True
+    if in_tables:
+        rest.append(line)
+        continue
+    match = key_re.match(line)
+    if match and match.group(1) in managed:
+        continue
+    top.append(line)
+
+while top and not top[-1].strip():
+    top.pop()
+
+out = top[:]
+if out:
+    out.append("\n")
+for key, value in managed.items():
+    out.append(f"{key} = {json.dumps(value)}\n")
+if rest:
+    if out and out[-1].strip():
+        out.append("\n")
+    out.extend(rest)
+
+path.write_text("".join(out))
+PYEOF
+log_info "Codex defaults written to $CODEX_CFG"
+
+python3 - "$CLAUDE_SETTINGS" << 'PYEOF'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+old_allow = ['Bash(*)', 'Read(*)', 'Write(*)', 'Edit(*)', 'Glob(*)', 'Grep(*)']
+
+try:
+    settings = json.loads(path.read_text())
+except Exception:
+    settings = {}
+
+permissions = settings.setdefault("permissions", {})
+if permissions.get("allow") == old_allow and permissions.get("deny") == []:
+    permissions.pop("allow", None)
+    permissions.pop("deny", None)
+permissions["defaultMode"] = "acceptEdits"
+
+path.write_text(json.dumps(settings, indent=2) + "\n")
+PYEOF
+log_info "Claude Code default permission mode written to $CLAUDE_SETTINGS"
 
 # Provider profiles
 PROFILES_DIR="$HOME/.config/cc-profiles"
@@ -291,59 +340,76 @@ PYEOF
 
   log_info "MCP toolkit servers written to $CLAUDE_SETTINGS"
 
-  # Write codex MCP config (~/.codex/config.yaml)
-  CODEX_CFG="$HOME/.codex/config.yaml"
-  mkdir -p "$(dirname "$CODEX_CFG")"
+  # Write codex MCP config (~/.codex/config.toml)
   python3 - "$CODEX_CFG" "$NEED_SERVERS" \
       "$BRAVE_API_KEY" "$GITHUB_TOKEN" "$POSTGRES_DSN" "$SQLITE_PATH" << 'PYEOF'
-import sys, os
+import json
+import pathlib
+import re
+import sys
 
-codex_path = sys.argv[1]
+codex_path = pathlib.Path(sys.argv[1])
 servers    = sys.argv[2].split()
 brave_key  = sys.argv[3]
 gh_token   = sys.argv[4]
 pg_dsn     = sys.argv[5]
 sqlite_p   = sys.argv[6]
 
-lines = []
-if os.path.exists(codex_path):
-    with open(codex_path) as f:
-        lines = f.readlines()
+managed_names = {
+    "context7", "excalidraw", "puppeteer", "github", "brave-search",
+    "postgres", "sqlite", "claude-in-chrome",
+}
 
-# Strip existing mcpServers block
-out, in_block = [], False
+def q(value):
+    return json.dumps(value)
+
+def server_block(name, command, args, env=None):
+    lines = [f'[mcp_servers.{q(name)}]\n', f'command = {q(command)}\n']
+    lines.append("args = [" + ", ".join(q(arg) for arg in args) + "]\n")
+    if env:
+        lines.append(f'\n[mcp_servers.{q(name)}.env]\n')
+        for key, value in env.items():
+            lines.append(f'{key} = {q(value)}\n')
+    return lines
+
+lines = codex_path.read_text().splitlines(True) if codex_path.exists() else []
+table_re = re.compile(r'^\s*\[([^\]]+)\]\s*$')
+out = []
+skip = False
 for line in lines:
-    if line.startswith('mcpServers:'):
-        in_block = True; continue
-    if in_block and (line.startswith(' ') or line.startswith('\t')):
-        continue
-    in_block = False
-    out.append(line)
+    match = table_re.match(line)
+    if match:
+        table = match.group(1)
+        skip = False
+        for name in managed_names:
+            quoted = q(name)
+            if table in {f"mcp_servers.{quoted}", f"mcp_servers.{quoted}.env", f"mcp_servers.{name}", f"mcp_servers.{name}.env"}:
+                skip = True
+                break
+    if not skip:
+        out.append(line)
 
-entries = []
+while out and not out[-1].strip():
+    out.pop()
+
 if 'context7' in servers:
-    entries.append('  context7:\n    command: npx\n    args: ["-y", "@upstash/context7-mcp@latest"]\n')
+    out.extend(["\n"] + server_block('context7', 'npx', ['-y', '@upstash/context7-mcp@latest']))
 if 'excalidraw' in servers:
-    entries.append('  excalidraw:\n    command: npx\n    args: ["-y", "@anthropic-ai/mcp-server-excalidraw"]\n')
+    out.extend(["\n"] + server_block('excalidraw', 'npx', ['-y', '@anthropic-ai/mcp-server-excalidraw']))
 if 'puppeteer' in servers:
-    entries.append('  puppeteer:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-puppeteer"]\n')
+    out.extend(["\n"] + server_block('puppeteer', 'npx', ['-y', '@modelcontextprotocol/server-puppeteer']))
 if 'github' in servers and gh_token:
-    entries.append('  github:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-github"]\n    env:\n      GITHUB_PERSONAL_ACCESS_TOKEN: "{}"\n'.format(gh_token))
+    out.extend(["\n"] + server_block('github', 'npx', ['-y', '@modelcontextprotocol/server-github'], {'GITHUB_PERSONAL_ACCESS_TOKEN': gh_token}))
 if 'brave-search' in servers and brave_key:
-    entries.append('  brave-search:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-brave-search"]\n    env:\n      BRAVE_API_KEY: "{}"\n'.format(brave_key))
+    out.extend(["\n"] + server_block('brave-search', 'npx', ['-y', '@modelcontextprotocol/server-brave-search'], {'BRAVE_API_KEY': brave_key}))
 if 'postgres' in servers and pg_dsn:
-    entries.append('  postgres:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-postgres", "{}"]\n'.format(pg_dsn))
+    out.extend(["\n"] + server_block('postgres', 'npx', ['-y', '@modelcontextprotocol/server-postgres', pg_dsn]))
 if 'sqlite' in servers:
-    entries.append('  sqlite:\n    command: npx\n    args: ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "{}"]\n'.format(sqlite_p))
+    out.extend(["\n"] + server_block('sqlite', 'npx', ['-y', '@modelcontextprotocol/server-sqlite', '--db-path', sqlite_p]))
 if 'dev-chrome' in servers:
-    entries.append('  claude-in-chrome:\n    command: npx\n    args: ["-y", "@anthropic-ai/claude-in-chrome-mcp"]\n')
+    out.extend(["\n"] + server_block('claude-in-chrome', 'npx', ['-y', '@anthropic-ai/claude-in-chrome-mcp']))
 
-if entries:
-    out.append('mcpServers:\n')
-    out.extend(entries)
-
-with open(codex_path, 'w') as f:
-    f.writelines(out)
+codex_path.write_text("".join(out) + ("\n" if out else ""))
 PYEOF
 
   log_info "Codex MCP config written to $CODEX_CFG"
