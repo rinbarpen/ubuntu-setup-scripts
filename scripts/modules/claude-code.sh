@@ -5,83 +5,23 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 
 need_cmd npm
 
-CODEX_CFG="$HOME/.codex/config.toml"
-CODEX_LEGACY_CFG="$HOME/.codex/config.yaml"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 
-# Install CLIs
-log_info "Installing codex CLI..."
-npm install -g @openai/codex
-
+# Install Claude Code CLI
 log_info "Installing Claude Code..."
 npm install -g @anthropic-ai/claude-code
 
-if [[ -f "$CODEX_LEGACY_CFG" ]]; then
-  log_warn "Found legacy Codex config at $CODEX_LEGACY_CFG; current Codex CLI uses $CODEX_CFG. Leaving legacy file unchanged."
-fi
+mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
 
-mkdir -p "$(dirname "$CODEX_CFG")" "$(dirname "$CLAUDE_SETTINGS")"
-
-python3 - "$CODEX_CFG" << 'PYEOF'
-import json
-import pathlib
-import re
-import sys
-
-path = pathlib.Path(sys.argv[1])
-managed = {
-    "model": "gpt-5.5",
-    "model_reasoning_effort": "medium",
-    "plan_mode_reasoning_effort": "xhigh",
-    "approval_policy": "on-request",
-    "sandbox_mode": "workspace-write",
-}
-
-lines = path.read_text().splitlines(True) if path.exists() else []
-key_re = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=")
-table_re = re.compile(r"^\s*\[")
-
-top, rest = [], []
-in_tables = False
-for line in lines:
-    if table_re.match(line):
-        in_tables = True
-    if in_tables:
-        rest.append(line)
-        continue
-    match = key_re.match(line)
-    if match and match.group(1) in managed:
-        continue
-    top.append(line)
-
-while top and not top[-1].strip():
-    top.pop()
-
-out = top[:]
-if out:
-    out.append("\n")
-for key, value in managed.items():
-    out.append(f"{key} = {json.dumps(value)}\n")
-if rest:
-    if out and out[-1].strip():
-        out.append("\n")
-    out.extend(rest)
-
-path.write_text("".join(out))
-PYEOF
-log_info "Codex defaults written to $CODEX_CFG"
-
-# Claude Code model selection
+# Claude Code model selection (DeepSeek only)
 CLAUDE_MODEL=""
 if command -v whiptail &>/dev/null; then
   CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model for Claude Code:" 20 75 10 \
-    "claude-sonnet-4-6" "Claude Sonnet 4.6 (Anthropic official)" \
-    "claude-opus-4-6" "Claude Opus 4.6" \
-    "deepseek-v4-pro" "DeepSeek V4 Pro" \
-    "deepseek-v4-flash" "DeepSeek V4 Flash" \
-    "custom" "Custom model ID" \
-    3>&1 1>&2 2>&3) || CHOICE="claude-sonnet-4-6"
-  
+      "deepseek-v4-pro" "DeepSeek V4 Pro" \
+      "deepseek-v4-flash" "DeepSeek V4 Flash" \
+      "custom" "Custom model ID" \
+      3>&1 1>&2 2>&3) || CHOICE="deepseek-v4-pro"
+
   [[ "$CHOICE" == "custom" ]] && read -r -p "Enter model ID: " CHOICE
   CLAUDE_MODEL="$CHOICE"
 fi
@@ -113,14 +53,14 @@ permissions["defaultMode"] = "acceptEdits"
 
 path.write_text(json.dumps(settings, indent=2) + "\n")
 PYEOF
-log_info "Claude Code default permission mode written to $CLAUDE_SETTINGS"
+log_info "Claude Code default model and permission mode written to $CLAUDE_SETTINGS"
 
 # Provider profiles
 PROFILES_DIR="$HOME/.config/cc-profiles"
 mkdir -p "$PROFILES_DIR"
 
-while confirm "Add a provider profile for codex/cc?"; do
-  echo "Providers: anthropic / openai / openrouter / deepseek / custom"
+while confirm "Add a provider profile for Claude Code?"; do
+  echo "Providers: anthropic / openrouter / deepseek / custom"
   read -r -p "Provider name: " PROVIDER
   read -r -s -p "API key: " API_KEY; echo ""
 
@@ -130,36 +70,29 @@ while confirm "Add a provider profile for codex/cc?"; do
 export ANTHROPIC_API_KEY="${API_KEY}"
 EOF
       ;;
-    openai)
-      cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
-export OPENAI_API_KEY="${API_KEY}"
-EOF
-      ;;
     openrouter)
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
-export OPENAI_API_KEY="${API_KEY}"
-export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export ANTHROPIC_API_KEY="${API_KEY}"
+export ANTHROPIC_BASE_URL="https://openrouter.ai/api/v1"
 EOF
       ;;
     deepseek)
-      read -r -p "Anthropic-compatible gateway URL [https://api.deepseek.com/v1]: " GATEWAY_URL
-      GATEWAY_URL=${GATEWAY_URL:-"https://api.deepseek.com/v1"}
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
-export ANTHROPIC_BASE_URL="${GATEWAY_URL}"
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
 export ANTHROPIC_API_KEY="${API_KEY}"
 EOF
       ;;
     custom)
       read -r -p "API base URL: " BASE_URL
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
-export OPENAI_API_KEY="${API_KEY}"
-export OPENAI_BASE_URL="${BASE_URL}"
+export ANTHROPIC_API_KEY="${API_KEY}"
+export ANTHROPIC_BASE_URL="${BASE_URL}"
 EOF
       ;;
     *)
-      log_warn "Unknown provider '$PROVIDER', writing as custom (OPENAI_API_KEY only)"
+      log_warn "Unknown provider '$PROVIDER', writing as custom (ANTHROPIC_API_KEY only)"
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
-export OPENAI_API_KEY="${API_KEY}"
+export ANTHROPIC_API_KEY="${API_KEY}"
 EOF
       ;;
   esac
@@ -214,50 +147,26 @@ cc-switch() {
 BASHEOF
 fi
 
-# codex-auth function
-cat > "${FISH_FUNC_DIR}/codex_auth.fish" << 'EOF'
-function codex_auth
-    read -s -P "Enter OPENAI_API_KEY: " key
-    set -gx OPENAI_API_KEY $key
-    echo ""
-    echo "OPENAI_API_KEY set for this session"
-end
-EOF
-
-if ! grep -q "# codex-auth (added by setup)" "$HOME/.bashrc" 2>/dev/null; then
-cat >> "$HOME/.bashrc" << 'BASHEOF'
-
-# codex-auth (added by setup)
-codex-auth() {
-  read -r -s -p "Enter OPENAI_API_KEY: " key
-  echo ""
-  export OPENAI_API_KEY="$key"
-  echo "OPENAI_API_KEY set for this session"
-}
-BASHEOF
-fi
-
-# MCP Toolkits — scenario-based selection
+# MCP Toolkits — scenario-based selection (for Claude Code)
 if command -v whiptail &>/dev/null; then
-  SCENARIO_CHOICES=$(whiptail --title "MCP Toolkits" --checklist \
-    "Select toolkits to configure (SPACE to toggle):" 20 65 8 \
-    "frontend"   "前端开发: context7, excalidraw, puppeteer"  OFF \
-    "backend"    "后端开发: context7, github, postgres, sqlite" OFF \
-    "testing"    "测试:     context7, github, puppeteer"       OFF \
-    "analyst"    "分析师:   brave-search, context7, postgres"  OFF \
-    "stock"      "股票:     brave-search, context7"            OFF \
-    "marketing"  "市场:     brave-search, excalidraw"          OFF \
-    "daily"      "日常:     brave-search, context7"            ON  \
-    "chat"       "对话:     brave-search, context7"            ON  \
-    3>&1 1>&2 2>&3) || SCENARIO_CHOICES=""
+  SCENARIO_CHOICES=$(whiptail --title "MCP Toolkits (Claude Code)" --checklist \
+      "Select toolkits to configure for Claude Code (SPACE to toggle):" 20 65 8 \
+      "frontend"   "前端开发: context7, excalidraw, puppeteer"  OFF \
+      "backend"    "后端开发: context7, github, postgres, sqlite" OFF \
+      "testing"    "测试:     context7, github, puppeteer"       OFF \
+      "analyst"    "分析师:   brave-search, context7, postgres"  OFF \
+      "stock"      "股票:     brave-search, context7"            OFF \
+      "marketing"  "市场:     brave-search, excalidraw"          OFF \
+      "daily"      "日常:     brave-search, context7"            ON  \
+      "chat"       "对话:     brave-search, context7"            ON  \
+      3>&1 1>&2 2>&3) || SCENARIO_CHOICES=""
   SCENARIOS=$(echo "$SCENARIO_CHOICES" | tr -d '"')
 else
-  log_warn "whiptail not found — skipping MCP toolkit selection"
+  log_warn "whiptail not found — skipping MCP toolkit selection for Claude Code"
   SCENARIOS=""
 fi
 
 if [[ -n "$SCENARIOS" ]]; then
-  # Compute union of required MCP servers across selected scenarios
   declare -A NEED_MCP
   for scenario in $SCENARIOS; do
     case "$scenario" in
@@ -272,7 +181,6 @@ if [[ -n "$SCENARIOS" ]]; then
     esac
   done
 
-  # Collect credentials only for servers that are needed
   BRAVE_API_KEY=""
   if [[ -n "${NEED_MCP[brave-search]+x}" ]]; then
     read -r -p "BRAVE_API_KEY (leave empty to skip brave-search): " BRAVE_API_KEY
@@ -297,7 +205,6 @@ if [[ -n "$SCENARIOS" ]]; then
     [[ -n "$_sqlite_input" ]] && SQLITE_PATH="$_sqlite_input"
   fi
 
-  # Serialize the needed servers as a space-separated string for python3
   NEED_SERVERS="${!NEED_MCP[*]}"
 
   python3 - "$CLAUDE_SETTINGS" "$NEED_SERVERS" \
@@ -368,80 +275,6 @@ with open(path, 'w') as f:
 PYEOF
 
   log_info "MCP toolkit servers written to $CLAUDE_SETTINGS"
-
-  # Write codex MCP config (~/.codex/config.toml)
-  python3 - "$CODEX_CFG" "$NEED_SERVERS" \
-      "$BRAVE_API_KEY" "$GITHUB_TOKEN" "$POSTGRES_DSN" "$SQLITE_PATH" << 'PYEOF'
-import json
-import pathlib
-import re
-import sys
-
-codex_path = pathlib.Path(sys.argv[1])
-servers    = sys.argv[2].split()
-brave_key  = sys.argv[3]
-gh_token   = sys.argv[4]
-pg_dsn     = sys.argv[5]
-sqlite_p   = sys.argv[6]
-
-managed_names = {
-    "context7", "excalidraw", "puppeteer", "github", "brave-search",
-    "postgres", "sqlite", "claude-in-chrome",
-}
-
-def q(value):
-    return json.dumps(value)
-
-def server_block(name, command, args, env=None):
-    lines = [f'[mcp_servers.{q(name)}]\n', f'command = {q(command)}\n']
-    lines.append("args = [" + ", ".join(q(arg) for arg in args) + "]\n")
-    if env:
-        lines.append(f'\n[mcp_servers.{q(name)}.env]\n')
-        for key, value in env.items():
-            lines.append(f'{key} = {q(value)}\n')
-    return lines
-
-lines = codex_path.read_text().splitlines(True) if codex_path.exists() else []
-table_re = re.compile(r'^\s*\[([^\]]+)\]\s*$')
-out = []
-skip = False
-for line in lines:
-    match = table_re.match(line)
-    if match:
-        table = match.group(1)
-        skip = False
-        for name in managed_names:
-            quoted = q(name)
-            if table in {f"mcp_servers.{quoted}", f"mcp_servers.{quoted}.env", f"mcp_servers.{name}", f"mcp_servers.{name}.env"}:
-                skip = True
-                break
-    if not skip:
-        out.append(line)
-
-while out and not out[-1].strip():
-    out.pop()
-
-if 'context7' in servers:
-    out.extend(["\n"] + server_block('context7', 'npx', ['-y', '@upstash/context7-mcp@latest']))
-if 'excalidraw' in servers:
-    out.extend(["\n"] + server_block('excalidraw', 'npx', ['-y', '@anthropic-ai/mcp-server-excalidraw']))
-if 'puppeteer' in servers:
-    out.extend(["\n"] + server_block('puppeteer', 'npx', ['-y', '@modelcontextprotocol/server-puppeteer']))
-if 'github' in servers and gh_token:
-    out.extend(["\n"] + server_block('github', 'npx', ['-y', '@modelcontextprotocol/server-github'], {'GITHUB_PERSONAL_ACCESS_TOKEN': gh_token}))
-if 'brave-search' in servers and brave_key:
-    out.extend(["\n"] + server_block('brave-search', 'npx', ['-y', '@modelcontextprotocol/server-brave-search'], {'BRAVE_API_KEY': brave_key}))
-if 'postgres' in servers and pg_dsn:
-    out.extend(["\n"] + server_block('postgres', 'npx', ['-y', '@modelcontextprotocol/server-postgres', pg_dsn]))
-if 'sqlite' in servers:
-    out.extend(["\n"] + server_block('sqlite', 'npx', ['-y', '@modelcontextprotocol/server-sqlite', '--db-path', sqlite_p]))
-if 'dev-chrome' in servers:
-    out.extend(["\n"] + server_block('claude-in-chrome', 'npx', ['-y', '@anthropic-ai/claude-in-chrome-mcp']))
-
-codex_path.write_text("".join(out) + ("\n" if out else ""))
-PYEOF
-
-  log_info "Codex MCP config written to $CODEX_CFG"
 fi
 
-log_info "codex-cc: done"
+log_info "claude-code: done"

@@ -31,10 +31,11 @@ scripts/
     ├── browsers.sh       # Chrome, Firefox
     ├── vms.sh            # VirtualBox, QEMU/KVM
     ├── openclaw.sh       # npm install -g openclaw
-    └── codex-cc.sh       # codex CLI + Claude Code + full-auto + cc-switch + codex-auth
+    ├── codex.sh          # codex CLI + codex-auth
+    └── claude-code.sh    # Claude Code + cc-switch + provider profiles
 ```
 
-Total: 11 modules.
+Total: 12 modules.
 
 ---
 
@@ -79,12 +80,12 @@ Functions:
    A failed module does NOT stop remaining modules — the loop uses `|| true` and records the exit code.
 
 **Execution order** (important for dependencies):
-`ubuntu-base → languages → shell → fisher → git → zerotier → zellij → openclaw → codex-cc`
+`ubuntu-base → languages → shell → fisher → git → zerotier → zellij → openclaw → codex → claude-code`
 
 This order ensures:
 - `languages` (nvm) runs before `fisher` (which invokes `nvm use latest`)
 - `shell` (fish) runs before `fisher` (which requires fish)
-- `ubuntu-base` (npm via nvm happens in `languages` instead, so `openclaw`/`codex-cc` come last)
+- `ubuntu-base` (npm via nvm happens in `languages` instead, so `openclaw`/`codex`/`claude-code` come last)
 
 Supports standalone module runs: `bash modules/git.sh`
 
@@ -211,68 +212,73 @@ whiptail checklist to select:
 
 ---
 
-### `modules/codex-cc.sh`
+### `modules/codex.sh`
 
 **Prerequisites:** `need_cmd npm`
 
-**Step 1 — Install CLIs:**
+**Step 1 — Install codex CLI:**
 ```bash
 npm install -g @openai/codex
+```
+
+**Step 2 — Model selection:**
+- whiptail menu with options: `do-not-set`, `deepseek-v4-pro`, `deepseek-v4-flash`, `custom`
+- If user selects a DeepSeek model, automatically set `openai_base_url = "https://api.deepseek.com"` in `config.toml`
+- If user selects `do-not-set`, skip writing `model` field (codex will use plan mode)
+
+**Step 3 — Write defaults to `~/.codex/config.toml`:**
+```toml
+model_reasoning_effort = "medium"
+plan_mode_reasoning_effort = "xhigh"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+# Only if DeepSeek model selected:
+openai_base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"  # or "deepseek-v4-flash"
+```
+
+**Step 4 — `codex-auth` function:**
+Written to `~/.config/fish/functions/codex_auth.fish` and `~/.bashrc`:
+- Prompts user to enter OPENAI_API_KEY
+- Exports `OPENAI_API_KEY` in current shell session (session-only)
+
+**Step 5 — MCP Toolkits:**
+Same scenario-based selection as other modules, writes to `~/.codex/config.toml` under `[mcp_servers]`.
+
+---
+
+### `modules/claude-code.sh`
+
+**Prerequisites:** `need_cmd npm`
+
+**Step 1 — Install Claude Code CLI:**
+```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-**Step 2 — Full-auto permissions for Claude Code:**
-
-If `~/.claude/settings.json` exists, merge permissions; otherwise create new file.
-User is warned before writing:
-> "This will grant Claude Code full Bash/file access. Proceed? [y/N]"
-
-```json
-{
-  "permissions": {
-    "allow": ["Bash(*)", "Read(*)", "Write(*)", "Edit(*)", "Glob(*)", "Grep(*)"],
-    "deny": []
-  }
-}
-```
+**Step 2 — Model selection (DeepSeek only):**
+- whiptail menu with options: `deepseek-v4-pro`, `deepseek-v4-flash`, `custom`
+- Default: `deepseek-v4-pro`
+- Writes to `~/.claude/settings.json`: `"model": "deepseek-v4-pro"`
 
 **Step 3 — Provider profiles:**
+For each provider, create `~/.config/cc-profiles/<name>.env`:
 
-For each provider the user wants to configure, create `~/.config/cc-profiles/<name>.env`:
-
-```bash
-# ~/.config/cc-profiles/openrouter.env
-export OPENAI_API_KEY="sk-or-..."
-export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
-export ANTHROPIC_API_KEY=""
-```
-
-Supported variable names per provider:
 | Provider | Variables written |
 |----------|------------------|
 | anthropic | `ANTHROPIC_API_KEY` |
-| openai | `OPENAI_API_KEY` |
-| openrouter | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| custom | `OPENAI_API_KEY`, `OPENAI_BASE_URL` (user provides both) |
+| openrouter | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` |
+| deepseek | `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, `ANTHROPIC_API_KEY` |
+| custom | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` (user provides both) |
 
-At install time, prompt: "Add a provider profile? [y/N]" → loop until user says no.
-
-**Step 4 — `codex-auth` function:**
-
-Written to `~/.config/fish/functions/codex_auth.fish` and `~/.bashrc`:
-- Prompts the user to enter their OpenAI API key
-- Exports `OPENAI_API_KEY` in the current shell session
-- Does NOT write to file (session-only; for persistent keys use `cc-switch`)
-
-**Step 5 — `cc-switch` function:**
-
+**Step 4 — `cc-switch` function:**
 Written to `~/.config/fish/functions/cc_switch.fish` and `~/.bashrc`:
 - Usage: `cc-switch <profile>` (e.g. `cc-switch openrouter`)
-- Loads `~/.config/cc-profiles/<profile>.env` by sourcing it in the current shell
-- Prints confirmation: `Switched to profile: openrouter`
-- If profile not found, lists available profiles
+- Loads `~/.config/cc-profiles/<profile>.env` by sourcing it
+- Prints confirmation or lists available profiles if not found
 
-Profile files use `export KEY=VALUE` format (bash-compatible, sourced in both fish via `bass` and bash directly).
+**Step 5 — MCP Toolkits:**
+Same scenario-based selection, writes to `~/.claude/settings.json` under `mcpServers`.
 
 ---
 
@@ -325,8 +331,9 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
    - `zellij --version`
    - `codex --version`, `claude --version`
 5. Test proxy functions in fish: `proxy_on`, `proxy_status` (shows address), `proxy_off` (vars unset)
-6. Test `cc-switch openrouter`: verify `echo $OPENAI_BASE_URL` shows openrouter URL in same session
+6. Test `cc-switch openrouter`: verify `echo $ANTHROPIC_BASE_URL` shows openrouter URL in same session
 7. Test `codex-auth`: run function, enter key, verify `echo $OPENAI_API_KEY` reflects input
+8. Test codex model config: verify `~/.codex/config.toml` contains correct `openai_base_url` when DeepSeek model selected
 8. Test `zellij` fallback: on a system without cargo, run module and verify binary at `/usr/local/bin/zellij`
 9. Test `nvm use latest` via fish after `fisher.sh` (confirm node --version updates)
 10. Test standalone module: `bash scripts/modules/git.sh` without running `setup.sh` first

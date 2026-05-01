@@ -29,7 +29,8 @@ bash scripts/modules/git.sh
 | `vms` | VirtualBox, QEMU/KVM |
 | `openclaw` | openclaw (npm) |
 | `opencode` | opencode CLI + defaults + MCP |
-| `codex-cc` | codex CLI + Claude Code + cc-switch + codex-auth |
+| `codex` | codex CLI + codex-auth |
+| `claude-code` | Claude Code + cc-switch + provider profiles |
 | `vibma` | Vibma MCP + Figma plugin installer + Figma skills |
 | `skills` | Install and register external skill collections |
 
@@ -43,7 +44,7 @@ The agent modules write current default config targets:
 | Claude Code | `~/.claude/settings.json` |
 | opencode | `~/.config/opencode/opencode.json` |
 
-`codex-cc` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
+`codex` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
 
 ## Using DeepSeek Models
 
@@ -53,13 +54,13 @@ These scripts support DeepSeek V4 Pro and V4 Flash across all three agent tools:
 DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**, you need an **Anthropic API-compatible gateway** (e.g., OpenRouter, or self-hosted One-API).
 
 ### Claude Code + DeepSeek
-1. Run `codex-cc` setup
+1. Run `claude-code` setup
 2. Add a `deepseek` provider profile (enter your gateway URL and API key)
 3. Select `deepseek-v4-pro` or `deepseek-v4-flash` as the default model in the interactive menu
 
 ### Codex + DeepSeek
 - Codex CLI will use the model configured in `~/.codex/config.toml`
-- Select your preferred model during `codex-cc` setup
+- Select your preferred model during `codex` setup
 
 ### opencode + DeepSeek
 - `deepseek/deepseek-v4-flash` is the default model
