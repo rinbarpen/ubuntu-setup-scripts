@@ -71,8 +71,25 @@ path.write_text("".join(out))
 PYEOF
 log_info "Codex defaults written to $CODEX_CFG"
 
+# Claude Code model selection
+CLAUDE_MODEL=""
+if command -v whiptail &>/dev/null; then
+  CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model for Claude Code:" 20 75 10 \
+    "claude-sonnet-4-6" "Claude Sonnet 4.6 (Anthropic official)" \
+    "claude-opus-4-6" "Claude Opus 4.6" \
+    "deepseek-v4-pro" "DeepSeek V4 Pro" \
+    "deepseek-v4-flash" "DeepSeek V4 Flash" \
+    "custom" "Custom model ID" \
+    3>&1 1>&2 2>&3) || CHOICE="claude-sonnet-4-6"
+  
+  [[ "$CHOICE" == "custom" ]] && read -r -p "Enter model ID: " CHOICE
+  CLAUDE_MODEL="$CHOICE"
+fi
+export CLAUDE_MODEL
+
 python3 - "$CLAUDE_SETTINGS" << 'PYEOF'
 import json
+import os
 import pathlib
 import sys
 
@@ -83,6 +100,10 @@ try:
     settings = json.loads(path.read_text())
 except Exception:
     settings = {}
+
+# Set model if user selected one
+if os.environ.get("CLAUDE_MODEL"):
+    settings["model"] = os.environ.get("CLAUDE_MODEL")
 
 permissions = settings.setdefault("permissions", {})
 if permissions.get("allow") == old_allow and permissions.get("deny") == []:
@@ -99,7 +120,7 @@ PROFILES_DIR="$HOME/.config/cc-profiles"
 mkdir -p "$PROFILES_DIR"
 
 while confirm "Add a provider profile for codex/cc?"; do
-  echo "Providers: anthropic / openai / openrouter / custom"
+  echo "Providers: anthropic / openai / openrouter / deepseek / custom"
   read -r -p "Provider name: " PROVIDER
   read -r -s -p "API key: " API_KEY; echo ""
 
@@ -118,6 +139,14 @@ EOF
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
 export OPENAI_API_KEY="${API_KEY}"
 export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+EOF
+      ;;
+    deepseek)
+      read -r -p "Anthropic-compatible gateway URL [https://api.deepseek.com/v1]: " GATEWAY_URL
+      GATEWAY_URL=${GATEWAY_URL:-"https://api.deepseek.com/v1"}
+      cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
+export ANTHROPIC_BASE_URL="${GATEWAY_URL}"
+export ANTHROPIC_API_KEY="${API_KEY}"
 EOF
       ;;
     custom)

@@ -13,8 +13,42 @@ npm install -g opencode-ai
 
 mkdir -p "$(dirname "$OPEN_CODE_CFG")"
 
+# Model selection
+DEFAULT_MODEL="deepseek/deepseek-v4-flash"
+PLAN_MODEL="openai/gpt-5.5"
+
+if command -v whiptail &>/dev/null; then
+  CHOICE=$(whiptail --title "opencode Default Model" --menu "Select default chat model:" 20 70 10 \
+    "deepseek/deepseek-v4-flash" "DeepSeek V4 Flash (fast & cheap)" \
+    "deepseek/deepseek-v4-pro" "DeepSeek V4 Pro (enhanced capability)" \
+    "deepseek/deepseek-chat" "DeepSeek V3 Chat" \
+    "openai/gpt-5.5" "OpenAI GPT-5.5" \
+    "openai/gpt-4o" "OpenAI GPT-4o" \
+    "openrouter/anthropic/claude-3.5-sonnet" "Claude 3.5 Sonnet (via OpenRouter)" \
+    "custom" "Custom model string" \
+    3>&1 1>&2 2>&3) || CHOICE="deepseek/deepseek-v4-flash"
+  
+  [[ "$CHOICE" == "custom" ]] && read -r -p "Enter custom model (provider/model): " CHOICE
+  DEFAULT_MODEL="$CHOICE"
+  
+  # Plan model selection
+  CHOICE=$(whiptail --title "opencode Plan Model" --menu "Select Plan model:" 15 70 6 \
+    "openai/gpt-5.5" "OpenAI GPT-5.5 (default)" \
+    "openai/o1-preview" "O1 Preview" \
+    "openai/o1-mini" "O1 Mini" \
+    "deepseek/deepseek-reasoner" "DeepSeek Reasoner" \
+    "custom" "Custom" \
+    3>&1 1>&2 2>&3) || CHOICE="openai/gpt-5.5"
+    
+  [[ "$CHOICE" == "custom" ]] && read -r -p "Enter custom Plan model: " CHOICE
+  PLAN_MODEL="$CHOICE"
+fi
+
+export DEFAULT_MODEL PLAN_MODEL
+
 python3 - "$OPEN_CODE_CFG" << 'PYEOF'
 import json
+import os
 import pathlib
 import sys
 
@@ -26,7 +60,7 @@ except Exception:
     config = {}
 
 config["$schema"] = "https://opencode.ai/config.json"
-config["model"] = "deepseek/deepseek-v4-flash"
+config["model"] = os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v4-flash")
 
 provider = config.setdefault("provider", {})
 provider["deepseek"] = {
@@ -40,7 +74,7 @@ provider["openai"] = {
 
 agent = config.setdefault("agent", {})
 plan = agent.setdefault("plan", {})
-plan["model"] = "openai/gpt-5.5"
+plan["model"] = os.environ.get("PLAN_MODEL", "openai/gpt-5.5")
 options = plan.setdefault("options", {})
 options["reasoningEffort"] = "xhigh"
 

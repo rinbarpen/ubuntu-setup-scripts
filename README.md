@@ -45,6 +45,27 @@ The agent modules write current default config targets:
 
 `codex-cc` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
 
+## Using DeepSeek Models
+
+These scripts support DeepSeek V4 Pro and V4 Flash across all three agent tools:
+
+### Prerequisites
+DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**, you need an **Anthropic API-compatible gateway** (e.g., OpenRouter, or self-hosted One-API).
+
+### Claude Code + DeepSeek
+1. Run `codex-cc` setup
+2. Add a `deepseek` provider profile (enter your gateway URL and API key)
+3. Select `deepseek-v4-pro` or `deepseek-v4-flash` as the default model in the interactive menu
+
+### Codex + DeepSeek
+- Codex CLI will use the model configured in `~/.codex/config.toml`
+- Select your preferred model during `codex-cc` setup
+
+### opencode + DeepSeek
+- `deepseek/deepseek-v4-flash` is the default model
+- `deepseek/deepseek-v4-pro` is available in the model selection menu
+- Both use the `@ai-sdk/deepseek` provider with `DEEPSEEK_API_KEY`
+
 ## Structure
 
 ```

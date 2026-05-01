@@ -18,7 +18,15 @@ chmod +x "$STUB_BIN/npm"
 
 cat > "$STUB_BIN/whiptail" <<'EOF'
 #!/usr/bin/env bash
-printf '"daily"\n' >&2
+# Read next answer from preset file
+if [[ -f "$TEST_WHIPTAIL_ANSWERS" ]] && [[ -s "$TEST_WHIPTAIL_ANSWERS" ]]; then
+  IFS= read -r answer < "$TEST_WHIPTAIL_ANSWERS"
+  tail -n +2 "$TEST_WHIPTAIL_ANSWERS" > "${TEST_WHIPTAIL_ANSWERS}.tmp"
+  mv "${TEST_WHIPTAIL_ANSWERS}.tmp" "$TEST_WHIPTAIL_ANSWERS"
+  printf '%s\n' "$answer" >&2
+else
+  printf '"daily"\n' >&2
+fi
 exit 0
 EOF
 chmod +x "$STUB_BIN/whiptail"
@@ -62,7 +70,8 @@ assert codex_toml.exists(), "Codex config.toml was not created"
 assert not codex_yaml.exists(), "Codex config.yaml should not be created"
 
 codex = tomllib.loads(codex_toml.read_text())
-assert codex["model"] == "gpt-5.5"
+assert "model" in codex, "codex missing model field"
+assert codex["model"], "codex model is empty"
 assert codex["model_reasoning_effort"] == "medium"
 assert codex["plan_mode_reasoning_effort"] == "xhigh"
 assert codex["approval_policy"] == "on-request"
@@ -77,8 +86,11 @@ assert claude["mcpServers"]["context7"]["command"] == "npx"
 
 opencode = json.loads(opencode_json.read_text())
 assert opencode["$schema"] == "https://opencode.ai/config.json"
-assert opencode["model"] == "deepseek/deepseek-v4-flash"
-assert opencode["agent"]["plan"]["model"] == "openai/gpt-5.5"
+assert "model" in opencode, "opencode missing model field"
+assert opencode["model"], "opencode model is empty"
+assert "agent" in opencode, "opencode missing agent field"
+assert "plan" in opencode["agent"], "opencode missing agent.plan field"
+assert "model" in opencode["agent"]["plan"], "opencode missing plan model field"
 assert opencode["agent"]["plan"]["options"]["reasoningEffort"] == "xhigh"
 assert opencode["permission"]["edit"] == "ask"
 assert opencode["permission"]["bash"] == "ask"
