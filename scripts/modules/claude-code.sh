@@ -7,25 +7,90 @@ need_cmd npm
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 
-# Install Claude Code CLI
-log_info "Installing Claude Code..."
-npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI (skip if already installed)
+if command -v claude &>/dev/null; then
+  log_info "Claude Code already installed ($(command -v claude)), skipping npm install"
+else
+  log_info "Installing Claude Code..."
+  npm install -g @anthropic-ai/claude-code
+fi
 
 mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
 
 # Claude Code model selection (DeepSeek only)
-CLAUDE_MODEL=""
+CLAUDE_MODEL="deepseek-v4-pro"
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+  _existing_model=$(python3 -c "import json; print(json.load(open('$CLAUDE_SETTINGS')).get('model',''))" 2>/dev/null || echo "")
+  [[ -n "$_existing_model" ]] && CLAUDE_MODEL="$_existing_model"
+fi
+
 if command -v whiptail &>/dev/null; then
-  CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model for Claude Code:" 20 75 10 \
+  _model_info="当前: ${CLAUDE_MODEL}"
+  CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model:\n${_model_info}" 20 75 10 \
       "deepseek-v4-pro" "DeepSeek V4 Pro" \
       "deepseek-v4-flash" "DeepSeek V4 Flash" \
       "custom" "Custom model ID" \
-      3>&1 1>&2 2>&3) || CHOICE="deepseek-v4-pro"
+      3>&1 1>&2 2>&3) || CHOICE=""
 
-  [[ "$CHOICE" == "custom" ]] && read -r -p "Enter model ID: " CHOICE
-  CLAUDE_MODEL="$CHOICE"
+  case "$CHOICE" in
+    deepseek-v4-pro|deepseek-v4-flash) CLAUDE_MODEL="$CHOICE" ;;
+    custom) read -r -p "Enter model ID: " CLAUDE_MODEL ;;
+    *) ;;  # keep existing default
+  esac
 fi
 export CLAUDE_MODEL
+
+# Plan mode model selection (defaults to a better model for deep reasoning)
+CLAUDE_PLAN_MODEL="deepseek-v4-pro"
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+  _existing_plan_model=$(python3 -c "
+import json
+try:
+    s = json.load(open('$CLAUDE_SETTINGS'))
+    env = s.get('env', {})
+    print(env.get('ANTHROPIC_DEFAULT_OPUS_MODEL', ''))
+except: pass
+" 2>/dev/null || echo "")
+  [[ -n "$_existing_plan_model" ]] && CLAUDE_PLAN_MODEL="$_existing_plan_model"
+fi
+
+if command -v whiptail &>/dev/null; then
+  _plan_info="当前: ${CLAUDE_PLAN_MODEL}"
+  PLAN_CHOICE=$(whiptail --title "Claude Code Plan Model" --menu "Select model for Plan mode (deep reasoning):\n${_plan_info}" 20 75 10 \
+      "deepseek-v4-pro" "DeepSeek V4 Pro (推荐)" \
+      "deepseek-v4-flash" "DeepSeek V4 Flash (快但稍弱)" \
+      "custom" "Custom model ID" \
+      3>&1 1>&2 2>&3) || PLAN_CHOICE=""
+
+  case "$PLAN_CHOICE" in
+    deepseek-v4-pro|deepseek-v4-flash) CLAUDE_PLAN_MODEL="$PLAN_CHOICE" ;;
+    custom) read -r -p "Enter plan model ID: " CLAUDE_PLAN_MODEL ;;
+    *) ;;  # keep existing default
+  esac
+fi
+export CLAUDE_PLAN_MODEL
+
+# Permission mode selection
+PERM_MODE="acceptEdits"
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+  _existing_perm=$(python3 -c "import json; print(json.load(open('$CLAUDE_SETTINGS')).get('permissions',{}).get('defaultMode',''))" 2>/dev/null || echo "")
+  [[ -n "$_existing_perm" ]] && PERM_MODE="$_existing_perm"
+fi
+
+if command -v whiptail &>/dev/null; then
+  _perm_info="当前: ${PERM_MODE}"
+  PERM_CHOICE=$(whiptail --title "Permission Mode" --menu "Select default permission mode:\n${_perm_info}" 18 70 4 \
+    "default"      "每次询问 (Ask every time)" \
+    "acceptEdits"  "自动接受编辑 (Auto-accept edits)" \
+    "bypass"       "绕过权限检查 (Bypass all checks)" \
+    3>&1 1>&2 2>&3) || PERM_CHOICE=""
+
+  case "$PERM_CHOICE" in
+    default|acceptEdits|bypass) PERM_MODE="$PERM_CHOICE" ;;
+    *) ;;  # keep existing default
+  esac
+fi
+export PERM_MODE
 
 python3 - "$CLAUDE_SETTINGS" << 'PYEOF'
 import json
@@ -45,11 +110,22 @@ except Exception:
 if os.environ.get("CLAUDE_MODEL"):
     settings["model"] = os.environ.get("CLAUDE_MODEL")
 
+# Set plan mode model (Opus-tier for deep reasoning)
+plan_model = os.environ.get("CLAUDE_PLAN_MODEL")
+if plan_model:
+    env = settings.setdefault("env", {})
+    env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = plan_model
+
 permissions = settings.setdefault("permissions", {})
 if permissions.get("allow") == old_allow and permissions.get("deny") == []:
     permissions.pop("allow", None)
     permissions.pop("deny", None)
-permissions["defaultMode"] = "acceptEdits"
+perm_mode = os.environ.get("PERM_MODE", "acceptEdits")
+permissions["defaultMode"] = perm_mode
+if perm_mode == "bypass":
+    permissions.pop("allow", None)
+    permissions.pop("deny", None)
+    permissions.pop("denyRules", None)
 
 path.write_text(json.dumps(settings, indent=2) + "\n")
 PYEOF
@@ -58,6 +134,12 @@ log_info "Claude Code default model and permission mode written to $CLAUDE_SETTI
 # Provider profiles
 PROFILES_DIR="$HOME/.config/cc-profiles"
 mkdir -p "$PROFILES_DIR"
+
+_ep=$(ls "$PROFILES_DIR"/*.env 2>/dev/null | xargs -I{} basename {} .env || echo "")
+if [[ -n "$_ep" ]]; then
+  log_info "Existing provider profiles:"
+  for _p in $_ep; do echo "  - $_p"; done
+fi
 
 while confirm "Add a provider profile for Claude Code?"; do
   echo "Providers: anthropic / openrouter / deepseek / custom"
@@ -148,9 +230,28 @@ BASHEOF
 fi
 
 # MCP Toolkits — scenario-based selection (for Claude Code)
+
+# Show existing MCP servers if any
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+  _existing_mcp=$(python3 -c "
+import json
+try:
+    s = json.load(open('$CLAUDE_SETTINGS'))
+    mcps = s.get('mcpServers', {})
+    if mcps:
+        for k in mcps: print(f'  - {k}')
+except: pass
+" 2>/dev/null)
+  if [[ -n "$_existing_mcp" ]]; then
+    log_info "Currently configured MCP servers:"
+    echo "$_existing_mcp"
+  fi
+fi
+
 if command -v whiptail &>/dev/null; then
   SCENARIO_CHOICES=$(whiptail --title "MCP Toolkits (Claude Code)" --checklist \
-      "Select toolkits to configure for Claude Code (SPACE to toggle):" 20 65 8 \
+      "Select toolkits to configure for Claude Code (SPACE to toggle):" 20 65 9 \
+      "recommended" "推荐: context7, brave-search, excalidraw, puppeteer" ON  \
       "frontend"   "前端开发: context7, excalidraw, puppeteer"  OFF \
       "backend"    "后端开发: context7, github, postgres, sqlite" OFF \
       "testing"    "测试:     context7, github, puppeteer"       OFF \
@@ -170,6 +271,7 @@ if [[ -n "$SCENARIOS" ]]; then
   declare -A NEED_MCP
   for scenario in $SCENARIOS; do
     case "$scenario" in
+      recommended) NEED_MCP[context7]=1; NEED_MCP[brave-search]=1; NEED_MCP[excalidraw]=1; NEED_MCP[puppeteer]=1 ;;
       frontend)  NEED_MCP[context7]=1; NEED_MCP[excalidraw]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
       backend)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[postgres]=1; NEED_MCP[sqlite]=1 ;;
       testing)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
@@ -275,6 +377,100 @@ with open(path, 'w') as f:
 PYEOF
 
   log_info "MCP toolkit servers written to $CLAUDE_SETTINGS"
+fi
+
+# Skills installation
+SKILLS_SRC="${SCRIPT_DIR}/../skills"
+SKILLS_TARGET="$HOME/.claude/skills"
+
+_install_bundled_skill() {
+  local name="$1"
+  local source_dir="${SKILLS_SRC}/${name}"
+  local target_dir="${SKILLS_TARGET}/${name}"
+
+  if [[ ! -f "${source_dir}/SKILL.md" ]]; then
+    log_warn "Missing skill template: ${source_dir}/SKILL.md"
+    return
+  fi
+
+  mkdir -p "$SKILLS_TARGET"
+
+  if [[ -d "$target_dir" ]]; then
+    local backup_dir="${target_dir}.bak.$(date +%Y%m%d%H%M%S)"
+    mv "$target_dir" "$backup_dir"
+    log_warn "Existing skill backed up: ${backup_dir}"
+  fi
+
+  cp -R "$source_dir" "$target_dir"
+  log_info "Installed skill: ${target_dir}"
+}
+
+_install_git_skill() {
+  local name="$1" url="$2"
+  local dest="${SKILLS_TARGET}/${name}"
+  if [[ -z "$url" ]]; then
+    log_warn "No URL for '${name}' -- skipping"
+    return
+  fi
+  if [[ -d "${dest}/.git" ]]; then
+    log_info "Updating skill: ${name}"
+    git -C "$dest" pull --ff-only || log_warn "git pull failed for ${name}"
+  else
+    log_info "Installing skill: ${name}"
+    git clone "$url" "$dest" || log_warn "git clone failed for ${name}"
+  fi
+}
+
+# Only show skills menu when stdin is a terminal (interactive)
+if command -v whiptail &>/dev/null && [[ -t 0 ]]; then
+  SKILL_CHOICES=$(whiptail --title "Claude Code Skills" --checklist \
+    "Select skills to install (SPACE to toggle):" 16 70 6 \
+    "figma-vibma"       "Vibma/Figma 连接工作流 (bundled)"        OFF \
+    "figma-start-macos" "Figma macOS 会话启动器 (bundled)"        OFF \
+    "superpowers"       "核心 superpowers 技能系统 (git)"         OFF \
+    "ui-ux"             "UI/UX Pro Max 设计技能 (git)"            OFF \
+    "ai-research"       "AI 自动调研 (git)"                       OFF \
+    "anthropic-skills"  "Anthropic 官方技能集 (git)"              OFF \
+    3>&1 1>&2 2>&3) || SKILL_CHOICES=""
+  SKILL_SELECTED=$(echo "$SKILL_CHOICES" | tr -d '"')
+else
+  SKILL_SELECTED=""
+fi
+
+SKILLS_INSTALLED=0
+for skill in $SKILL_SELECTED; do
+  case "$skill" in
+    figma-vibma)       _install_bundled_skill "figma-vibma"       ;;
+    figma-start-macos) _install_bundled_skill "figma-start-macos" ;;
+    superpowers)       read -r -p "superpowers repo URL: " _url
+                       _install_git_skill "superpowers" "$_url"   ;;
+    ui-ux)             read -r -p "ui-ux-pro-max repo URL: " _url
+                       _install_git_skill "ui-ux" "$_url"         ;;
+    ai-research)       read -r -p "ai-research repo URL: " _url
+                       _install_git_skill "ai-research" "$_url"   ;;
+    anthropic-skills)  read -r -p "anthropic-skills repo URL: " _url
+                       _install_git_skill "anthropic-skills" "$_url" ;;
+  esac
+  SKILLS_INSTALLED=1
+done
+
+if [[ "$SKILLS_INSTALLED" -eq 1 ]]; then
+  python3 - "$CLAUDE_SETTINGS" "$SKILLS_TARGET" << 'PYEOF'
+import json, sys
+path, skills_dir = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        s = json.load(f)
+except Exception:
+    s = {}
+if s.get('skillsDirectory') != skills_dir:
+    s['skillsDirectory'] = skills_dir
+    with open(path, 'w') as f:
+        json.dump(s, f, indent=2)
+        f.write('\n')
+    print("skillsDirectory updated")
+PYEOF
+  log_info "skillsDirectory set to $SKILLS_TARGET"
 fi
 
 log_info "claude-code: done"

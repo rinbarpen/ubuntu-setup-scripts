@@ -32,12 +32,23 @@ EOF
 chmod +x "$STUB_BIN/whiptail"
 
 export TEST_NPM_LOG="$TMP_DIR/npm.log"
-export PATH="$STUB_BIN:$PATH"
+
+# Filter user-local paths from PATH so system-installed codex/claude
+# don't interfere with the idempotency guard (command -v check)
+FILTERED_PATH=""
+IFS=':' read -ra _paths <<< "$PATH"
+for _p in "${_paths[@]}"; do
+  case "$_p" in
+    */nvm/*|*/.local/bin) ;;  # skip these — may contain codex/claude
+    *) FILTERED_PATH="${FILTERED_PATH:+$FILTERED_PATH:}$_p" ;;
+  esac
+done
+export PATH="$STUB_BIN:$FILTERED_PATH"
 
 run_codex() {
   HOME="$HOME_DIR" bash "$ROOT_DIR/scripts/modules/codex.sh" <<'EOF'
-n
 
+n
 EOF
 }
 
@@ -54,12 +65,21 @@ run_opencode() {
 EOF
 }
 
+run_paseo() {
+  HOME="$HOME_DIR" bash "$ROOT_DIR/scripts/modules/paseo.sh" <<'EOF'
+n
+n
+EOF
+}
+
 run_codex
 run_claude_code
 run_opencode
+run_paseo
 run_codex
 run_claude_code
 run_opencode
+run_paseo
 
 python3 - "$HOME_DIR" "$TEST_NPM_LOG" <<'PY'
 import json
@@ -74,6 +94,7 @@ codex_toml = home / ".codex" / "config.toml"
 codex_yaml = home / ".codex" / "config.yaml"
 claude_json = home / ".claude" / "settings.json"
 openclode_json = home / ".config" / "opencode" / "opencode.json"
+paseo_json = home / ".paseo" / "config.json"
 
 assert codex_toml.exists(), "Codex config.toml was not created"
 assert not codex_yaml.exists(), "Codex config.yaml should not be created"
@@ -111,9 +132,23 @@ assert opencode["permission"]["external_directory"] == "ask"
 assert opencode["mcp"]["context7"]["type"] == "local"
 assert "brave-search" not in opencode["mcp"], "empty BRAVE_API_KEY should skip brave-search"
 
+assert paseo_json.exists(), "Paseo config.json was not created"
+paseo = json.loads(paseo_json.read_text())
+assert paseo["$schema"] == "https://paseo.sh/schemas/paseo.config.v1.json"
+assert paseo["version"] == 1
+assert "daemon" in paseo, "paseo missing daemon field"
+assert "listen" in paseo["daemon"], "paseo daemon missing listen"
+assert ":" in paseo["daemon"]["listen"], "paseo listen should be host:port"
+assert "hostnames" in paseo["daemon"], "paseo daemon missing hostnames"
+assert isinstance(paseo["daemon"]["hostnames"], list)
+assert len(paseo["daemon"]["hostnames"]) > 0
+assert "mcp" in paseo["daemon"], "paseo daemon missing mcp"
+assert isinstance(paseo["daemon"]["mcp"]["enabled"], bool)
+
 assert "install -g @openai/codex" in npm_log
 assert "install -g @anthropic-ai/claude-code" in npm_log
 assert "install -g opencode-ai" in npm_log
+assert "install -g @getpaseo/cli" in npm_log
 PY
 
 echo "agent config tests passed"
