@@ -8,11 +8,12 @@ need_cmd whiptail
 sudo_check
 
 # Ordered list — respects dependencies (languages before npm-based AI CLIs, shell before fisher)
-ORDERED=(ubuntu-base languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code paseo vibma skills)
+ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code paseo aris vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
-  "Select modules to install (SPACE to toggle, ENTER to confirm):" 27 60 13 \
+  "Select modules to install (SPACE to toggle, ENTER to confirm):" 28 60 14 \
   "ubuntu-base"  "System tools, Docker, xrdp"          ON \
+  "api-config"   "API keys (Brave, GitHub, OpenAI...)"  ON \
   "languages"    "nvm/Node, Python, Rust, Go, uv"      ON \
   "shell"        "fish shell + proxy functions"         ON \
   "fisher"       "fisher + z, nvm, bass plugins"        ON \
@@ -26,6 +27,7 @@ CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
    "codex"        "codex CLI + MCP"                     ON \
    "claude-code"  "Claude Code + MCP"                   ON \
    "paseo"        "Agent orchestration (Paseo)"          ON \
+   "aris"         "Auto-Research-In-Sleep (ARIS)"        OFF \
    "vibma"        "Vibma MCP + Figma plugin + skills"   OFF \
   "skills"       "Claude Code skill collections"       OFF \
   3>&1 1>&2 2>&3) || { log_warn "Cancelled."; exit 0; }

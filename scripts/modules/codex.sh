@@ -2,6 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/utils.sh"
+source "${SCRIPT_DIR}/../lib/api.sh"
 
 need_cmd npm
 
@@ -222,11 +223,13 @@ fi
 
 if command -v whiptail &>/dev/null; then
   SCENARIO_CHOICES=$(whiptail --title "MCP Toolkits (codex)" --checklist \
-      "Select toolkits to configure for codex (SPACE to toggle):" 20 65 9 \
+      "Select toolkits to configure for codex (SPACE to toggle):" 20 65 11 \
       "recommended" "推荐: context7, brave-search, excalidraw, puppeteer" ON  \
-      "frontend"   "前端开发: context7, excalidraw, puppeteer"  OFF \
+      "frontend"   "前端开发: context7, excalidraw, puppeteer"   OFF \
       "backend"    "后端开发: context7, github, postgres, sqlite" OFF \
       "testing"    "测试:     context7, github, puppeteer"       OFF \
+      "research"   "科研/ARIS: brave-search, puppeteer, context7, sqlite" ON  \
+      "auto-research-in-sleeping" "ARIS 自动研究: brave-search, puppeteer, context7, sqlite" OFF \
       "analyst"    "分析师:   brave-search, context7, postgres"  OFF \
       "stock"      "股票:     brave-search, context7"            OFF \
       "marketing"  "市场:     brave-search, excalidraw"          OFF \
@@ -247,6 +250,8 @@ if [[ -n "$SCENARIOS" ]]; then
       frontend)  NEED_MCP[context7]=1; NEED_MCP[excalidraw]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
       backend)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[postgres]=1; NEED_MCP[sqlite]=1 ;;
       testing)   NEED_MCP[context7]=1; NEED_MCP[github]=1; NEED_MCP[puppeteer]=1; NEED_MCP[dev-chrome]=1 ;;
+      research)  NEED_MCP[brave-search]=1; NEED_MCP[puppeteer]=1; NEED_MCP[context7]=1; NEED_MCP[sqlite]=1 ;;
+      auto-research-in-sleeping) NEED_MCP[brave-search]=1; NEED_MCP[puppeteer]=1; NEED_MCP[context7]=1; NEED_MCP[sqlite]=1 ;;
       analyst)   NEED_MCP[brave-search]=1; NEED_MCP[context7]=1; NEED_MCP[postgres]=1; NEED_MCP[sqlite]=1 ;;
       stock)     NEED_MCP[brave-search]=1; NEED_MCP[context7]=1 ;;
       marketing) NEED_MCP[brave-search]=1; NEED_MCP[excalidraw]=1 ;;
@@ -255,22 +260,22 @@ if [[ -n "$SCENARIOS" ]]; then
     esac
   done
 
-  BRAVE_API_KEY=""
-  if [[ -n "${NEED_MCP[brave-search]+x}" ]]; then
-    read -r -p "BRAVE_API_KEY (leave empty to skip brave-search): " BRAVE_API_KEY
-    [[ -z "$BRAVE_API_KEY" ]] && log_warn "No BRAVE_API_KEY — skipping brave-search" && unset "NEED_MCP[brave-search]"
+  BRAVE_API_KEY=$(api_key_get "BRAVE_API_KEY" "BRAVE_API_KEY (leave empty to skip brave-search)" true)
+  if [[ -z "$BRAVE_API_KEY" ]]; then
+    log_warn "No BRAVE_API_KEY — skipping brave-search"
+    unset "NEED_MCP[brave-search]"
   fi
 
-  GITHUB_TOKEN=""
-  if [[ -n "${NEED_MCP[github]+x}" ]]; then
-    read -r -s -p "GitHub Personal Access Token (leave empty to skip github): " GITHUB_TOKEN; echo ""
-    [[ -z "$GITHUB_TOKEN" ]] && log_warn "No GitHub token — skipping github" && unset "NEED_MCP[github]"
+  GITHUB_TOKEN=$(api_key_get "GITHUB_TOKEN" "GitHub Personal Access Token (leave empty to skip github)" true)
+  if [[ -z "$GITHUB_TOKEN" ]]; then
+    log_warn "No GitHub token — skipping github"
+    unset "NEED_MCP[github]"
   fi
 
-  POSTGRES_DSN=""
-  if [[ -n "${NEED_MCP[postgres]+x}" ]]; then
-    read -r -p "Postgres connection string (leave empty to skip): " POSTGRES_DSN
-    [[ -z "$POSTGRES_DSN" ]] && log_warn "No Postgres DSN — skipping postgres" && unset "NEED_MCP[postgres]"
+  POSTGRES_DSN=$(api_key_get "POSTGRES_DSN" "Postgres connection string (leave empty to skip)" false)
+  if [[ -z "$POSTGRES_DSN" ]]; then
+    log_warn "No Postgres DSN — skipping postgres"
+    unset "NEED_MCP[postgres]"
   fi
 
   SQLITE_PATH="$HOME/data.db"

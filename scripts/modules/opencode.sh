@@ -2,6 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/utils.sh"
+source "${SCRIPT_DIR}/../lib/api.sh"
 
 need_cmd npm
 need_cmd python3
@@ -121,22 +122,22 @@ if [[ -n "$SCENARIOS" ]]; then
     esac
   done
 
-  BRAVE_API_KEY=""
-  if [[ -n "${NEED_MCP[brave-search]+x}" ]]; then
-    read -r -p "BRAVE_API_KEY (leave empty to skip brave-search): " BRAVE_API_KEY
-    [[ -z "$BRAVE_API_KEY" ]] && log_warn "No BRAVE_API_KEY — skipping brave-search" && unset "NEED_MCP[brave-search]"
+  BRAVE_API_KEY=$(api_key_get "BRAVE_API_KEY" "BRAVE_API_KEY (leave empty to skip brave-search)" true)
+  if [[ -z "$BRAVE_API_KEY" ]]; then
+    log_warn "No BRAVE_API_KEY — skipping brave-search"
+    unset "NEED_MCP[brave-search]"
   fi
 
-  GITHUB_TOKEN=""
-  if [[ -n "${NEED_MCP[github]+x}" ]]; then
-    read -r -s -p "GitHub Personal Access Token (leave empty to skip github): " GITHUB_TOKEN; echo ""
-    [[ -z "$GITHUB_TOKEN" ]] && log_warn "No GitHub token — skipping github" && unset "NEED_MCP[github]"
+  GITHUB_TOKEN=$(api_key_get "GITHUB_TOKEN" "GitHub Personal Access Token (leave empty to skip github)" true)
+  if [[ -z "$GITHUB_TOKEN" ]]; then
+    log_warn "No GitHub token — skipping github"
+    unset "NEED_MCP[github]"
   fi
 
-  POSTGRES_DSN=""
-  if [[ -n "${NEED_MCP[postgres]+x}" ]]; then
-    read -r -p "Postgres connection string (leave empty to skip): " POSTGRES_DSN
-    [[ -z "$POSTGRES_DSN" ]] && log_warn "No Postgres DSN — skipping postgres" && unset "NEED_MCP[postgres]"
+  POSTGRES_DSN=$(api_key_get "POSTGRES_DSN" "Postgres connection string (leave empty to skip)" false)
+  if [[ -z "$POSTGRES_DSN" ]]; then
+    log_warn "No Postgres DSN — skipping postgres"
+    unset "NEED_MCP[postgres]"
   fi
 
   SQLITE_PATH="$HOME/data.db"
