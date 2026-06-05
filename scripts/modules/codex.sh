@@ -5,6 +5,7 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 source "${SCRIPT_DIR}/../lib/api.sh"
 
 need_cmd npm
+need_cmd python3
 
 CODEX_CFG="$HOME/.codex/config.toml"
 CODEX_LEGACY_CFG="$HOME/.codex/config.yaml"
@@ -23,9 +24,121 @@ fi
 
 mkdir -p "$(dirname "$CODEX_CFG")"
 
-# Codex model selection
+# =============================================
+# 1. Model Provider Profiles
+# =============================================
+
+# Detect existing providers from config
+CODEX_PROVIDERS_JSON="{}"
+if [[ -f "$CODEX_CFG" ]]; then
+  CODEX_PROVIDERS_JSON=$(python3 -c "
+import tomllib, pathlib, json
+try:
+    c = tomllib.loads(pathlib.Path('$CODEX_CFG').read_text())
+    provs = c.get('model_providers', {})
+    result = {}
+    for k, v in provs.items():
+        result[k] = {sk: sv for sk, sv in v.items() if isinstance(sv, (str, int, float, bool))}
+    print(json.dumps(result))
+except: print(json.dumps({}))
+" 2>/dev/null || echo '{}')
+fi
+export CODEX_PROVIDERS_JSON
+
+# Show existing providers
+_existing_count=$(echo "$CODEX_PROVIDERS_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+if [[ "$_existing_count" -gt 0 ]]; then
+  log_info "Existing providers:"
+  echo "$CODEX_PROVIDERS_JSON" | python3 -c "
+import sys, json
+for k, v in json.load(sys.stdin).items():
+    print(f'  - {k}: {v.get(\"name\", k)} ({v.get(\"base_url\", \"?\")})')
+"
+fi
+
+if command -v whiptail &>/dev/null; then
+  for _prov_idx in 1 2 3 4 5; do
+    _do_add=$(whiptail --title "Codex Provider" --menu "Add a model provider?" 10 50 2 \
+      "yes" "添加供应商" \
+      "no"  "完成" \
+      3>&1 1>&2 2>&3) || _do_add="no"
+    [[ "$_do_add" != "yes" ]] && break
+
+    PROVIDER_TYPE=$(whiptail --title "Provider Type" --menu "Select provider type:" 18 60 8 \
+      "openai"   "OpenAI (https://api.openai.com/v1)" \
+      "deepseek" "DeepSeek (https://api.deepseek.com)" \
+      "azure"    "Azure OpenAI" \
+      "ollama"   "Ollama (local)" \
+      "lmstudio" "LM Studio (local)" \
+      "custom"   "自定义供应商" \
+      3>&1 1>&2 2>&3) || break
+
+    _name=""
+    _display=""
+    _base_url=""
+    _env_key=""
+    _wire_api="chat"
+
+    case "$PROVIDER_TYPE" in
+      openai)
+        _name="openai"; _display="OpenAI"
+        _base_url="https://api.openai.com/v1"
+        _env_key="OPENAI_API_KEY"; _wire_api="responses" ;;
+      deepseek)
+        _name="deepseek"; _display="DeepSeek"
+        _base_url="https://api.deepseek.com"
+        _env_key="DEEPSEEK_API_KEY"; _wire_api="chat" ;;
+      azure)
+        _name="azure"; _display="Azure OpenAI"
+        _base_url=$(whiptail --inputbox "Azure endpoint URL:" 8 60 --title "Azure" 3>&1 1>&2 2>&3) || break
+        _env_key="AZURE_OPENAI_API_KEY"; _wire_api="responses" ;;
+      ollama)
+        _name="ollama"; _display="Ollama"
+        _base_url=$(whiptail --inputbox "Ollama base URL [http://localhost:11434/v1]:" 8 60 "http://localhost:11434/v1" --title "Ollama" 3>&1 1>&2 2>&3) || break
+        _env_key=""; _wire_api="chat" ;;
+      lmstudio)
+        _name="lmstudio"; _display="LM Studio"
+        _base_url=$(whiptail --inputbox "LM Studio base URL [http://localhost:1234/v1]:" 8 60 "http://localhost:1234/v1" --title "LM Studio" 3>&1 1>&2 2>&3) || break
+        _env_key=""; _wire_api="chat" ;;
+      custom)
+        _name=$(whiptail --inputbox "Provider ID (e.g. myproxy):" 8 60 --title "Custom" 3>&1 1>&2 2>&3) || break
+        [[ -z "$_name" ]] && { log_warn "Provider ID cannot be empty"; continue; }
+        _display=$(whiptail --inputbox "Display name [$_name]:" 8 60 "$_name" --title "Custom" 3>&1 1>&2 2>&3) || break
+        _base_url=$(whiptail --inputbox "Base URL:" 8 60 --title "Custom" 3>&1 1>&2 2>&3) || break
+        _env_key=$(whiptail --inputbox "API key env var (leave empty if not needed):" 8 60 --title "Custom" 3>&1 1>&2 2>&3) || break
+        _wire_api=$(whiptail --menu "API format:" 10 40 2 \
+          "chat"      "Chat Completions API" \
+          "responses" "OpenAI Responses API" \
+          3>&1 1>&2 2>&3) || _wire_api="chat" ;;
+    esac
+
+    # Build/update providers JSON
+    CODEX_PROVIDERS_JSON=$(python3 -c "
+import json, os
+d = json.loads(os.environ.get('CODEX_PROVIDERS_JSON', '{}'))
+d['$_name'] = {'name': '$_display', 'base_url': '$_base_url', 'wire_api': '$_wire_api'}
+if '$_env_key':
+    d['$_name']['env_key'] = '$_env_key'
+print(json.dumps(d))
+")
+    export CODEX_PROVIDERS_JSON
+
+    # Prompt for API key
+    if [[ -n "$_env_key" ]]; then
+      api_key_get "$_env_key" "${_env_key} (for ${_display})" true
+    fi
+    log_info "Added provider: $_display"
+  done
+fi
+
+# =============================================
+# 2. Default Provider & Model Selection
+# =============================================
+
+CODEX_DEFAULT_PROVIDER=""
 CODEX_MODEL=""
 _existing_model=""
+
 if [[ -f "$CODEX_CFG" ]]; then
   _existing_model=$(python3 -c "
 import tomllib, pathlib
@@ -34,28 +147,59 @@ try:
     print(c.get('model',''))
 except: pass
 " 2>/dev/null || echo "")
-  [[ -n "$_existing_model" ]] && CODEX_MODEL="$_existing_model" && log_info "Existing model: $CODEX_MODEL"
 fi
 
-if command -v whiptail &>/dev/null; then
-  _model_info="当前: ${CODEX_MODEL:-未设置}"
-  CHOICE=$(whiptail --title "Codex Model" --menu "Select default model for Codex:\n${_model_info}" 20 75 10 \
-      "do-not-set"    "Do not set model (use plan mode for reasoning)" \
-      "deepseek-v4-pro" "DeepSeek V4 Pro" \
-      "deepseek-v4-flash" "DeepSeek V4 Flash (for plan mode)" \
-      "custom" "Custom model ID" \
-      3>&1 1>&2 2>&3) || CHOICE=""
+# Build provider ID list from JSON
+_provider_ids=$(echo "$CODEX_PROVIDERS_JSON" | python3 -c "
+import sys, json
+for k in json.load(sys.stdin): print(k)
+" 2>/dev/null || true)
 
-  case "$CHOICE" in
-    do-not-set) CODEX_MODEL="" ;;
-    deepseek-v4-pro|deepseek-v4-flash) CODEX_MODEL="$CHOICE" ;;
-    custom) read -r -p "Enter model ID: " CODEX_MODEL ;;
-    *) ;;  # keep existing / default
-  esac
+if [[ -n "$_provider_ids" ]] && command -v whiptail &>/dev/null; then
+  _menu_items=()
+  while IFS= read -r pid; do
+    _display_name=$(echo "$CODEX_PROVIDERS_JSON" | python3 -c "
+import sys, json
+print(json.load(sys.stdin).get('$pid', {}).get('name', '$pid'))
+")
+    _menu_items+=("$pid" "$_display_name")
+  done <<< "$_provider_ids"
+
+  _provider_count=$(echo "$_provider_ids" | wc -l)
+  _provider_choice=$(whiptail --title "Default Provider" --menu \
+    "Select default provider:" \
+    $((_provider_count * 2 + 7)) 50 "$_provider_count" \
+    "${_menu_items[@]}" \
+    3>&1 1>&2 2>&3) || _provider_choice=""
+
+  if [[ -n "$_provider_choice" ]]; then
+    CODEX_DEFAULT_PROVIDER="$_provider_choice"
+    export CODEX_DEFAULT_PROVIDER
+
+    _current_model_hint="$_existing_model"
+    [[ -z "$_current_model_hint" ]] && _current_model_hint="gpt-5"
+    CODEX_MODEL=$(whiptail --inputbox \
+      "Model ID for ${_provider_choice} (e.g. gpt-5, deepseek-v4-pro):" \
+      8 60 "$_current_model_hint" --title "Model" 3>&1 1>&2 2>&3) || CODEX_MODEL=""
+
+    if [[ -n "$CODEX_MODEL" ]]; then
+      # Prompt for API key if this provider uses one
+      _env_key=$(echo "$CODEX_PROVIDERS_JSON" | python3 -c "
+import sys, json
+print(json.load(sys.stdin).get('$_provider_choice', {}).get('env_key', ''))
+")
+      if [[ -n "$_env_key" ]]; then
+        api_key_get "$_env_key" "${_env_key} (for ${_provider_choice})" true
+      fi
+    fi
+    export CODEX_MODEL
+  fi
 fi
-export CODEX_MODEL
 
-# Plan mode model selection (defaults to better model for deep reasoning)
+# =============================================
+# 3. Plan Mode Model
+# =============================================
+
 CODEX_PLAN_MODEL="deepseek-v4-pro"
 if [[ -f "$CODEX_CFG" ]]; then
   _existing_plan_model=$(python3 -c "
@@ -74,17 +218,166 @@ if command -v whiptail &>/dev/null; then
       "deepseek-v4-pro" "DeepSeek V4 Pro (推荐)" \
       "deepseek-v4-flash" "DeepSeek V4 Flash (快但稍弱)" \
       "custom" "Custom model ID" \
+      "do-not-set" "Do not set plan model" \
       3>&1 1>&2 2>&3) || PLAN_CHOICE=""
 
   case "$PLAN_CHOICE" in
     deepseek-v4-pro|deepseek-v4-flash) CODEX_PLAN_MODEL="$PLAN_CHOICE" ;;
     custom) read -r -p "Enter plan model ID: " CODEX_PLAN_MODEL ;;
+    do-not-set) CODEX_PLAN_MODEL="" ;;
     *) ;;  # keep existing default
   esac
 fi
 export CODEX_PLAN_MODEL
 
-# Approval policy selection (= permission mode equivalent for codex)
+# =============================================
+# 4. Features Configuration
+# =============================================
+
+CODEX_FEATURES_CONFIGURED="false"
+CODEX_FEATURES_MEMORIES="false"
+CODEX_FEATURES_HOOKS="true"
+CODEX_FEATURES_UNDO="false"
+CODEX_FEATURES_APPS="false"
+CODEX_FEATURES_NETWORK_PROXY="false"
+
+# Read existing features from config
+if [[ -f "$CODEX_CFG" ]]; then
+  _existing_features=$(python3 -c "
+import tomllib, pathlib, json
+try:
+    c = tomllib.loads(pathlib.Path('$CODEX_CFG').read_text())
+    f = c.get('features', {})
+    print(json.dumps({k: v for k, v in f.items() if isinstance(v, bool)}))
+except: print('{}')
+" 2>/dev/null || echo '{}')
+
+  for _fk in memories hooks undo apps network_proxy; do
+    _fv=$(echo "$_existing_features" | python3 -c "
+import sys, json
+v = json.load(sys.stdin).get('$_fk')
+print(str(v).lower() if v is not None else '')
+" 2>/dev/null || echo "")
+    if [[ "$_fv" == "true" ]]; then
+      varname="CODEX_FEATURES_$(echo "$_fk" | tr '[:lower:]' '[:upper:]')"
+      printf -v "$varname" "true"
+    elif [[ "$_fv" == "false" ]]; then
+      varname="CODEX_FEATURES_$(echo "$_fk" | tr '[:lower:]' '[:upper:]')"
+      printf -v "$varname" "false"
+    fi
+  done
+fi
+
+if command -v whiptail &>/dev/null; then
+  _mem_status="OFF"; [[ "${CODEX_FEATURES_MEMORIES}" == "true" ]] && _mem_status="ON"
+  _hooks_status="OFF"; [[ "${CODEX_FEATURES_HOOKS}" == "true" ]] && _hooks_status="ON"
+  _undo_status="OFF"; [[ "${CODEX_FEATURES_UNDO}" == "true" ]] && _undo_status="ON"
+  _apps_status="OFF"; [[ "${CODEX_FEATURES_APPS}" == "true" ]] && _apps_status="ON"
+  _net_status="OFF"; [[ "${CODEX_FEATURES_NETWORK_PROXY}" == "true" ]] && _net_status="ON"
+
+  FEATURE_CHOICES=$(whiptail --title "Codex Features" --checklist \
+    "Toggle features (SPACE to toggle, TAB to finish):" 18 65 6 \
+    "memories"      "记忆系统 (Memories)"              "$_mem_status" \
+    "hooks"         "生命周期钩子 (lifecycle hooks)"    "$_hooks_status" \
+    "undo"          "撤销支持 (undo via git snapshots)" "$_undo_status" \
+    "apps"          "ChatGPT Apps 支持 (实验性)"        "$_apps_status" \
+    "network_proxy" "沙箱网络代理 (实验性)"             "$_net_status" \
+    3>&1 1>&2 2>&3) || FEATURE_CHOICES=""
+
+  # Reset and apply choices
+  CODEX_FEATURES_MEMORIES="false"; CODEX_FEATURES_HOOKS="false"
+  CODEX_FEATURES_UNDO="false"; CODEX_FEATURES_APPS="false"
+  CODEX_FEATURES_NETWORK_PROXY="false"
+  for _f in $FEATURE_CHOICES; do
+    _f=$(echo "$_f" | tr -d '"')
+    case "$_f" in
+      memories)      CODEX_FEATURES_MEMORIES="true" ;;
+      hooks)         CODEX_FEATURES_HOOKS="true" ;;
+      undo)          CODEX_FEATURES_UNDO="true" ;;
+      apps)          CODEX_FEATURES_APPS="true" ;;
+      network_proxy) CODEX_FEATURES_NETWORK_PROXY="true" ;;
+    esac
+  done
+  CODEX_FEATURES_CONFIGURED="true"
+fi
+
+export CODEX_FEATURES_CONFIGURED CODEX_FEATURES_MEMORIES CODEX_FEATURES_HOOKS \
+  CODEX_FEATURES_UNDO CODEX_FEATURES_APPS CODEX_FEATURES_NETWORK_PROXY
+
+# =============================================
+# 5. TUI Configuration
+# =============================================
+
+CODEX_TUI_CONFIGURED="false"
+CODEX_TUI_ANIMATIONS="true"
+CODEX_TUI_ALT_SCREEN="never"
+CODEX_TUI_TOOLTIPS="false"
+
+# Read existing TUI settings
+if [[ -f "$CODEX_CFG" ]]; then
+  _existing_tui=$(python3 -c "
+import tomllib, pathlib, json
+try:
+    c = tomllib.loads(pathlib.Path('$CODEX_CFG').read_text())
+    t = c.get('tui', {})
+    print(json.dumps(t))
+except: print('{}')
+" 2>/dev/null || echo '{}')
+
+  _ta=$(echo "$_existing_tui" | python3 -c "
+import sys, json; v = json.load(sys.stdin).get('animations')
+print(str(v).lower() if v is not None else 'true')
+" 2>/dev/null)
+  [[ "$_ta" == "false" ]] && CODEX_TUI_ANIMATIONS="false"
+
+  _tas=$(echo "$_existing_tui" | python3 -c "
+import sys, json; print(json.load(sys.stdin).get('alternate_screen','never'))
+" 2>/dev/null)
+  [[ -n "$_tas" ]] && CODEX_TUI_ALT_SCREEN="$_tas"
+
+  _tt=$(echo "$_existing_tui" | python3 -c "
+import sys, json; v = json.load(sys.stdin).get('show_tooltips')
+print(str(v).lower() if v is not None else 'false')
+" 2>/dev/null)
+  [[ "$_tt" == "true" ]] && CODEX_TUI_TOOLTIPS="true"
+fi
+
+if command -v whiptail &>/dev/null; then
+  _anim_status="OFF"; [[ "${CODEX_TUI_ANIMATIONS}" == "true" ]] && _anim_status="ON"
+  _tooltip_status="OFF"; [[ "${CODEX_TUI_TOOLTIPS}" == "true" ]] && _tooltip_status="ON"
+
+  TUI_CHOICES=$(whiptail --title "Codex TUI Settings" --checklist \
+    "TUI options (SPACE to toggle, TAB to finish):" 14 60 3 \
+    "animations" "ASCII 动画" "$_anim_status" \
+    "tooltips"   "新手引导 tooltips" "$_tooltip_status" \
+    3>&1 1>&2 2>&3) || TUI_CHOICES=""
+
+  CODEX_TUI_ANIMATIONS="false"
+  CODEX_TUI_TOOLTIPS="false"
+  for _t in $TUI_CHOICES; do
+    _t=$(echo "$_t" | tr -d '"')
+    case "$_t" in
+      animations) CODEX_TUI_ANIMATIONS="true" ;;
+      tooltips)   CODEX_TUI_TOOLTIPS="true" ;;
+    esac
+  done
+
+  _alt_choice=$(whiptail --title "Alternate Screen" --menu \
+    "Alternate screen mode:" 12 50 3 \
+    "never" "保留终端回滚 (推荐)" \
+    "auto"  "自动管理" \
+    3>&1 1>&2 2>&3) || _alt_choice="never"
+  CODEX_TUI_ALT_SCREEN="$_alt_choice"
+
+  CODEX_TUI_CONFIGURED="true"
+fi
+
+export CODEX_TUI_CONFIGURED CODEX_TUI_ANIMATIONS CODEX_TUI_ALT_SCREEN CODEX_TUI_TOOLTIPS
+
+# =============================================
+# 6. Approval Policy
+# =============================================
+
 CODEX_APPROVAL="on-request"
 if [[ -f "$CODEX_CFG" ]]; then
   _existing_approval=$(python3 -c "
@@ -112,16 +405,21 @@ if command -v whiptail &>/dev/null; then
 fi
 export CODEX_APPROVAL
 
-# Write codex defaults
+# =============================================
+# 7. Write Config (Python)
+# =============================================
+
 python3 - "$CODEX_CFG" << 'PYEOF'
 import json
+import os
 import pathlib
 import re
 import sys
-import os
 
 path = pathlib.Path(sys.argv[1])
+
 approval_policy = os.environ.get("CODEX_APPROVAL", "on-request")
+
 managed = {
     "model_reasoning_effort": "medium",
     "plan_mode_reasoning_effort": "xhigh",
@@ -129,22 +427,28 @@ managed = {
     "sandbox_mode": "workspace-write",
 }
 
-# Only add model if user selected one
-codex_model = os.environ.get("CODEX_MODEL")
+codex_model = os.environ.get("CODEX_MODEL", "")
 if codex_model:
     managed["model"] = codex_model
-    # DeepSeek models need custom base URL (OpenAI format)
-    if "deepseek" in codex_model.lower():
-        managed["openai_base_url"] = "https://api.deepseek.com"
 
-# Add plan mode model (separate from default model)
-codex_plan_model = os.environ.get("CODEX_PLAN_MODEL")
+codex_plan_model = os.environ.get("CODEX_PLAN_MODEL", "")
 if codex_plan_model:
     managed["plan_model"] = codex_plan_model
 
+default_provider = os.environ.get("CODEX_DEFAULT_PROVIDER", "")
+if default_provider:
+    managed["model_provider"] = default_provider
+
+# Deprecated keys to remove from config (migrated to model_providers)
+deprecated = {"openai_base_url", "openai_api_key"}
+skip_keys = set(managed.keys()) | deprecated
+
+# Managed table prefixes (these whole sections get removed and rewritten)
+managed_tables = {"features", "tui", "model_providers"}
+
 lines = path.read_text().splitlines(True) if path.exists() else []
 key_re = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=")
-table_re = re.compile(r"^\s*\[")
+table_re = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 
 top, rest = [], []
 in_tables = False
@@ -155,26 +459,95 @@ for line in lines:
         rest.append(line)
         continue
     match = key_re.match(line)
-    if match and match.group(1) in managed:
+    if match and (match.group(1) in skip_keys):
         continue
     top.append(line)
 
+# Remove managed table sections from rest
+rest_out = []
+skip = False
+for line in rest:
+    match = table_re.match(line)
+    if match:
+        table_name = match.group(1)
+        skip = any(
+            table_name == mt or table_name.split(".")[0] == mt
+            for mt in managed_tables
+        )
+    if not skip:
+        rest_out.append(line)
+
+# Clean trailing whitespace from top
 while top and not top[-1].strip():
     top.pop()
 
+# Build output
 out = top[:]
 if out:
     out.append("\n")
-for key, value in managed.items():
-    out.append(f"{key} = {json.dumps(value)}\n")
-if rest:
+
+# Write managed top-level keys (sorted for readability)
+for key in sorted(managed.keys()):
+    out.append(f"{key} = {json.dumps(managed[key])}\n")
+
+# --- Features section ---
+features_configured = os.environ.get("CODEX_FEATURES_CONFIGURED") == "true"
+if features_configured:
     if out and out[-1].strip():
         out.append("\n")
-    out.extend(rest)
+    out.append("[features]\n")
+    for feat in ["memories", "hooks", "undo", "apps", "network_proxy"]:
+        env_key = f"CODEX_FEATURES_{feat.upper()}"
+        val = os.environ.get(env_key, "false")
+        out.append(f"{feat} = {'true' if val == 'true' else 'false'}\n")
+
+# --- TUI section ---
+tui_configured = os.environ.get("CODEX_TUI_CONFIGURED") == "true"
+if tui_configured:
+    if out and out[-1].strip():
+        out.append("\n")
+    out.append("[tui]\n")
+    anim = os.environ.get("CODEX_TUI_ANIMATIONS", "true")
+    out.append(f"animations = {'true' if anim == 'true' else 'false'}\n")
+    alt_screen = os.environ.get("CODEX_TUI_ALT_SCREEN", "never")
+    out.append(f"alternate_screen = {json.dumps(alt_screen)}\n")
+    tooltips = os.environ.get("CODEX_TUI_TOOLTIPS", "false")
+    out.append(f"show_tooltips = {'true' if tooltips == 'true' else 'false'}\n")
+
+# --- Model Providers section ---
+providers_json = os.environ.get("CODEX_PROVIDERS_JSON", "{}")
+try:
+    providers_data = json.loads(providers_json)
+except json.JSONDecodeError:
+    providers_data = {}
+
+if providers_data:
+    for prov_id in sorted(providers_data.keys()):
+        prov_config = providers_data[prov_id]
+        if out and out[-1].strip():
+            out.append("\n")
+        out.append(f"[model_providers.{prov_id}]\n")
+        for key in ["name", "base_url", "env_key", "wire_api"]:
+            if key in prov_config:
+                value = prov_config[key]
+                if isinstance(value, bool):
+                    out.append(f"{key} = {'true' if value else 'false'}\n")
+                else:
+                    out.append(f"{key} = {json.dumps(value)}\n")
+
+# Append remaining non-managed tables
+if rest_out:
+    if out and out[-1].strip():
+        out.append("\n")
+    out.extend(rest_out)
 
 path.write_text("".join(out))
 PYEOF
 log_info "Codex defaults written to $CODEX_CFG"
+
+# =============================================
+# 8. MCP Toolkits (existing)
+# =============================================
 
 # codex-auth function
 FISH_FUNC_DIR="$HOME/.config/fish/functions"
@@ -201,8 +574,6 @@ codex-auth() {
 }
 BASHEOF
 fi
-
-# MCP Toolkits — scenario-based selection (for codex)
 
 # Show existing MCP servers if any
 if [[ -f "$CODEX_CFG" ]]; then
@@ -360,7 +731,10 @@ PYEOF
   log_info "Codex MCP config written to $CODEX_CFG"
 fi
 
-# Skills installation
+# =============================================
+# 9. Skills Installation (existing)
+# =============================================
+
 SKILLS_SRC="${SCRIPT_DIR}/../skills"
 SKILLS_TARGET="$HOME/.claude/skills"
 

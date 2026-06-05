@@ -46,6 +46,20 @@ done
 export PATH="$STUB_BIN:$FILTERED_PATH"
 
 run_codex() {
+  # whiptail stub outputs answers literally.
+  # --menu answers: no quotes (real whiptail outputs plain text).
+  # --checklist answers: quotes preserve item boundaries for shell splitting.
+  cat > "$TMP_DIR/answers_codex.txt" <<'ANSWERS'
+no
+deepseek-v4-pro
+"memories" "hooks"
+"animations"
+never
+on-request
+"daily"
+
+ANSWERS
+  TEST_WHIPTAIL_ANSWERS="$TMP_DIR/answers_codex.txt" \
   HOME="$HOME_DIR" bash "$ROOT_DIR/scripts/modules/codex.sh" <<'EOF'
 
 n
@@ -107,6 +121,27 @@ assert codex["model_reasoning_effort"] == "medium"
 assert codex["plan_mode_reasoning_effort"] == "xhigh"
 assert codex["approval_policy"] == "on-request"
 assert codex["sandbox_mode"] == "workspace-write"
+
+# Assert new features section
+assert "features" in codex, "codex missing features section"
+assert codex["features"]["memories"] == True
+assert codex["features"]["hooks"] == True
+assert codex["features"]["undo"] == False
+assert codex["features"]["apps"] == False
+assert codex["features"]["network_proxy"] == False
+
+# Assert new TUI section
+assert "tui" in codex, "codex missing tui section"
+assert codex["tui"]["animations"] == True
+assert codex["tui"]["alternate_screen"] == "never"
+assert codex["tui"]["show_tooltips"] == False
+
+# No model_providers should be configured (provider prompt skipped)
+assert "model_providers" not in codex, "no providers should be configured"
+
+# Deprecated openai_base_url should not exist
+assert "openai_base_url" not in codex, "deprecated openai_base_url should be removed"
+
 assert codex["mcp_servers"]["context7"]["command"] == "npx"
 assert "brave-search" not in codex["mcp_servers"], "empty BRAVE_API_KEY should skip brave-search"
 

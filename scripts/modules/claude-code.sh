@@ -111,10 +111,26 @@ except Exception:
 if os.environ.get("CLAUDE_MODEL"):
     settings["model"] = os.environ.get("CLAUDE_MODEL")
 
-# Set plan mode model (Opus-tier for deep reasoning)
+# Env for third-party API providers (DeepSeek etc.): CLAUDE_CODE_ATTRIBUTION_HEADER=0 is required;
+# first two reduce response latency; ENABLE_TOOL_SEARCH + DISABLE_EXTRA_USAGE_COMMAND
+# are general Claude Code optimizations
+env = settings.setdefault("env", {})
+env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+env.setdefault("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK", "1")
+env.setdefault("CLAUDE_CODE_ATTRIBUTION_HEADER", "0")
+env.setdefault("ENABLE_TOOL_SEARCH", "1")
+env.setdefault("DISABLE_EXTRA_USAGE_COMMAND", "1")
+# DeepSeek model routing defaults (only set when model is selected)
+model = os.environ.get("CLAUDE_MODEL", "")
+if model:
+    env.setdefault("ANTHROPIC_MODEL", model)
+    env.setdefault("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-v4-flash")
+    env.setdefault("ANTHROPIC_DEFAULT_HAIKU_MODEL", "deepseek-v4-flash")
+    env.setdefault("CLAUDE_CODE_SUBAGENT_MODEL", "deepseek-v4-flash")
+env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "1000000")
+env.setdefault("CLAUDE_CODE_EFFORT_LEVEL", "max")
 plan_model = os.environ.get("CLAUDE_PLAN_MODEL")
 if plan_model:
-    env = settings.setdefault("env", {})
     env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = plan_model
 
 permissions = settings.setdefault("permissions", {})
