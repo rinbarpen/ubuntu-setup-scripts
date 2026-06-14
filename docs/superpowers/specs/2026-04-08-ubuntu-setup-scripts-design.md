@@ -31,11 +31,14 @@ scripts/
     ├── browsers.sh       # Chrome, Firefox
     ├── vms.sh            # VirtualBox, QEMU/KVM
     ├── openclaw.sh       # npm install -g openclaw
-    ├── codex.sh          # codex CLI + codex-auth
-    └── claude-code.sh    # Claude Code + cc-switch + provider profiles
+    ├── opencode.sh       # opencode CLI + relay provider config + MCP
+    ├── codex.sh          # codex CLI + multi-provider + codex-auth
+    ├── claude-code.sh    # Claude Code + cc-switch + provider profiles
+    ├── hermes-agent.sh   # Hermes CLI + model config + MCP
+    └── paseo.sh          # Paseo CLI + daemon config + MCP
 ```
 
-Total: 12 modules.
+Total: 16 modules.
 
 ---
 
@@ -80,7 +83,7 @@ Functions:
    A failed module does NOT stop remaining modules — the loop uses `|| true` and records the exit code.
 
 **Execution order** (important for dependencies):
-`ubuntu-base → languages → shell → fisher → git → zerotier → zellij → openclaw → codex → claude-code`
+`ubuntu-base → languages → shell → fisher → git → zerotier → zellij → openclaw → opencode → codex → claude-code → hermes-agent → paseo`
 
 This order ensures:
 - `languages` (nvm) runs before `fisher` (which invokes `nvm use latest`)
@@ -214,36 +217,71 @@ whiptail checklist to select:
 
 ### `modules/codex.sh`
 
-**Prerequisites:** `need_cmd npm`
+**Prerequisites:** `need_cmd npm`, `need_cmd python3`
 
 **Step 1 — Install codex CLI:**
 ```bash
 npm install -g @openai/codex
 ```
 
-**Step 2 — Model selection:**
-- whiptail menu with options: `do-not-set`, `deepseek-v4-pro`, `deepseek-v4-flash`, `custom`
-- If user selects a DeepSeek model, automatically set `openai_base_url = "https://api.deepseek.com"` in `config.toml`
-- If user selects `do-not-set`, skip writing `model` field (codex will use plan mode)
+**Step 2 — Model Provider Profiles (up to 5):**
+- whiptail menu to add model providers. Built-in types:
+  - `openai` — `https://api.openai.com/v1`, Responses API, `OPENAI_API_KEY`
+  - `deepseek` — `https://api.deepseek.com`, Chat API, `DEEPSEEK_API_KEY`
+  - `openrouter` — `https://openrouter.ai/api/v1`, Chat API, `OPENROUTER_API_KEY` (GPT/CLAUDE via relay)
+  - `aihubmix` — `https://aihubmix.com/v1`, Chat API, `AIHUBMIX_API_KEY` (GPT/CLAUDE via relay)
+  - `azure` — user-provided endpoint, Responses API, `AZURE_OPENAI_API_KEY`
+  - `ollama` — `http://localhost:11434/v1`, Chat API, no key (local)
+  - `lmstudio` — `http://localhost:1234/v1`, Chat API, no key (local)
+  - `custom` — fully configurable: any base URL, env key name, and API format (chat/responses)
+- API keys stored in `~/.config/rinbarpen/api-keys.env` via shared `lib/api.sh`
+- Multiple providers coexist in `[model_providers.<id>]` table in `config.toml`
 
-**Step 3 — Write defaults to `~/.codex/config.toml`:**
+**Step 3 — Default provider & model selection:**
+- Select default provider from configured list via whiptail menu
+- Enter model ID (e.g. `gpt-5`, `deepseek-v4-pro`)
+- Stored as `model_provider` and `model` in `config.toml`
+
+**Step 4 — Plan mode model:**
+- whiptail menu with options: `deepseek-v4-pro`, `deepseek-v4-flash`, `gpt-5.5`, `gpt-4o`, `claude-sonnet-4-20250514`, `custom`, `do-not-set`
+
+**Step 5 — Write defaults to `~/.codex/config.toml`:**
 ```toml
 model_reasoning_effort = "medium"
 plan_mode_reasoning_effort = "xhigh"
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
-# Only if DeepSeek model selected:
-openai_base_url = "https://api.deepseek.com"
-model = "deepseek-v4-pro"  # or "deepseek-v4-flash"
+plan_model = "deepseek-v4-pro"  # selected plan model
+
+[features]
+memories = false
+hooks = true
+undo = false
+apps = false
+network_proxy = false
+
+[tui]
+animations = true
+alternate_screen = "never"
+show_tooltips = false
+
+[model_providers.openai]
+name = "OpenAI"
+base_url = "https://api.openai.com/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
 ```
 
-**Step 4 — `codex-auth` function:**
+**Step 6 — `codex-auth` function:**
 Written to `~/.config/fish/functions/codex_auth.fish` and `~/.bashrc`:
-- Prompts user to enter OPENAI_API_KEY
-- Exports `OPENAI_API_KEY` in current shell session (session-only)
+- Detects the default `model_provider` from `~/.codex/config.toml`
+- Prompts for the correct API key env var: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, or `AIHUBMIX_API_KEY`
+- Exports the key in current shell session (session-only)
 
-**Step 5 — MCP Toolkits:**
+**Step 7 — MCP Toolkits:**
 Same scenario-based selection as other modules, writes to `~/.codex/config.toml` under `[mcp_servers]`.
+
+**Deprecated keys:** `openai_base_url` and `openai_api_key` are removed from config (migrated to `model_providers`).
 
 ---
 
@@ -256,10 +294,15 @@ Same scenario-based selection as other modules, writes to `~/.codex/config.toml`
 npm install -g @anthropic-ai/claude-code
 ```
 
-**Step 2 — Model selection (DeepSeek only):**
-- whiptail menu with options: `deepseek-v4-pro`, `deepseek-v4-flash`, `custom`
+**Step 2 — Model selection (multi-provider):**
+- whiptail menu with options: `deepseek-v4-pro`, `deepseek-v4-flash`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/gpt-5.5`, `anthropic/claude-sonnet-4-20250514`, `anthropic/claude-opus-4-20250514`, `claude-sonnet-4-20250514` (direct), `custom`
 - Default: `deepseek-v4-pro`
 - Writes to `~/.claude/settings.json`: `"model": "deepseek-v4-pro"`
+
+**Subordinate model defaults (context-aware):**
+- DeepSeek models → `deepseek-v4-flash` for sonnet/haiku roles
+- Claude models → same model for sonnet, `deepseek-v4-flash` for haiku
+- GPT models → same model for sonnet, `deepseek-v4-flash` for haiku
 
 **Step 3 — Provider profiles:**
 For each provider, create `~/.config/cc-profiles/<name>.env`:
@@ -269,6 +312,7 @@ For each provider, create `~/.config/cc-profiles/<name>.env`:
 | anthropic | `ANTHROPIC_API_KEY` |
 | openrouter | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` |
 | deepseek | `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, `ANTHROPIC_API_KEY` |
+| aihubmix | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL=https://aihubmix.com/v1` |
 | custom | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` (user provides both) |
 
 **Step 4 — `cc-switch` function:**
@@ -282,7 +326,76 @@ Same scenario-based selection, writes to `~/.claude/settings.json` under `mcpSer
 
 ---
 
-## Data Flow
+### `modules/opencode.sh`
+
+**Prerequisites:** `need_cmd npm`, `need_cmd python3`
+
+**Step 1 — Install opencode CLI:**
+```bash
+npm install -g opencode-ai
+```
+
+**Step 2 — Model selection:**
+- whiptail menu with options (provider/model format):
+  - DeepSeek: `deepseek/deepseek-v4-flash`, `deepseek/deepseek-v4-pro`, `deepseek/deepseek-chat`
+  - OpenAI: `openai/gpt-5.5`, `openai/gpt-4o`, `openai/gpt-4o-mini`
+  - Via OpenRouter: `openrouter/anthropic/claude-sonnet-4-20250514`, `openrouter/anthropic/claude-opus-4-20250514`, `openrouter/openai/gpt-5.5`, `openrouter/openai/gpt-4o`
+  - Via AIHubMix: `aihubmix/openai/gpt-5.5`, `aihubmix/anthropic/claude-sonnet-4-20250514`
+  - Custom: free-text `provider/model` string
+
+**Step 3 — Relay configuration (OpenAI provider):**
+- Optional whiptail menu: `none` (direct OpenAI), `openrouter`, `aihubmix`, `custom`
+- Sets `baseURL` on the `@ai-sdk/openai` provider entry when relay is selected
+- Pre-registers `openrouter` and `aihubmix` provider entries for use with model prefix routing
+- Custom relay prompts for base URL and API key env var name
+
+**Step 4 — Plan model selection:**
+- whiptail menu: `openai/gpt-5.5`, `openai/gpt-4o`, `openrouter/openai/gpt-5.5`, `openrouter/anthropic/claude-sonnet-4-20250514`, `deepseek/deepseek-reasoner`, `custom`
+
+**Step 5 — Write defaults to `~/.config/opencode/opencode.json`:**
+```json
+{
+  "model": "deepseek/deepseek-v4-flash",
+  "provider": {
+    "deepseek": {
+      "npm": "@ai-sdk/deepseek",
+      "options": { "apiKey": "{env:DEEPSEEK_API_KEY}" }
+    },
+    "openai": {
+      "npm": "@ai-sdk/openai",
+      "options": { "apiKey": "{env:OPENAI_API_KEY}" }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "apiKey": "{env:OPENROUTER_API_KEY}",
+        "baseURL": "https://openrouter.ai/api/v1"
+      }
+    },
+    "aihubmix": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "apiKey": "{env:AIHUBMIX_API_KEY}",
+        "baseURL": "https://aihubmix.com/v1"
+      }
+    }
+  },
+  "agent": {
+    "plan": {
+      "model": "openai/gpt-5.5",
+      "options": { "reasoningEffort": "xhigh" }
+    }
+  },
+  "permission": {
+    "edit": "ask",
+    "bash": "ask",
+    "external_directory": "ask"
+  }
+}
+```
+
+**Step 6 — MCP Toolkits:**
+Same scenario-based selection, writes to `~/.config/opencode/opencode.json` under `mcp`.
 
 ```
 setup.sh
@@ -321,7 +434,7 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 ## Testing / Verification
 
 1. Fresh Ubuntu 22.04/24.04 VM (requires TTY — Docker containers need `docker run -it`)
-2. Run `bash setup.sh` → verify whiptail checklist appears with 9 modules
+2. Run `bash setup.sh` → verify whiptail checklist appears with 16 modules
 3. Select all modules → verify each completes and summary shows all OK
 4. Per-module spot checks:
    - `git config --global user.name` — non-empty
@@ -329,11 +442,14 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
    - `fish --version`, `fisher list` — installed plugins listed
    - `zerotier-cli status` — online
    - `zellij --version`
-   - `codex --version`, `claude --version`
+   - `codex --version`, `claude --version`, `opencode --version`
 5. Test proxy functions in fish: `proxy_on`, `proxy_status` (shows address), `proxy_off` (vars unset)
 6. Test `cc-switch openrouter`: verify `echo $ANTHROPIC_BASE_URL` shows openrouter URL in same session
-7. Test `codex-auth`: run function, enter key, verify `echo $OPENAI_API_KEY` reflects input
-8. Test codex model config: verify `~/.codex/config.toml` contains correct `openai_base_url` when DeepSeek model selected
-8. Test `zellij` fallback: on a system without cargo, run module and verify binary at `/usr/local/bin/zellij`
-9. Test `nvm use latest` via fish after `fisher.sh` (confirm node --version updates)
-10. Test standalone module: `bash scripts/modules/git.sh` without running `setup.sh` first
+7. Test `cc-switch aihubmix`: verify `echo $ANTHROPIC_BASE_URL` shows aihubmix URL
+8. Test `codex-auth`: run function, enter key, verify appropriate env var reflects input (detects provider from config)
+9. Test opencode relay: verify `~/.config/opencode/opencode.json` contains `openrouter` and `aihubmix` provider entries with `baseURL` fields
+10. Test codex model config: verify `~/.codex/config.toml` contains `[model_providers]` table when providers configured
+11. Test `zellij` fallback: on a system without cargo, run module and verify binary at `/usr/local/bin/zellij`
+12. Test `nvm use latest` via fish after `fisher.sh` (confirm node --version updates)
+13. Test standalone module: `bash scripts/modules/git.sh` without running `setup.sh` first
+14. Test `model-switch.sh list` shows all 7 providers including openrouter and aihubmix

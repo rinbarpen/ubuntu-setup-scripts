@@ -28,6 +28,14 @@ PROVIDER_URL["aixor"]="https://aixor.org"
 PROVIDER_MODELS["aixor"]="deepseek-v4-pro qwen3.6-plus glm-5 gpt-4o"
 PROVIDER_KEY["aixor"]="ANTHROPIC_AUTH_TOKEN"
 
+PROVIDER_URL["openrouter"]="https://openrouter.ai/api/v1"
+PROVIDER_MODELS["openrouter"]="openai/gpt-4o openai/gpt-4o-mini openai/gpt-5.5 anthropic/claude-sonnet-4-20250514 anthropic/claude-opus-4-20250514"
+PROVIDER_KEY["openrouter"]="ANTHROPIC_API_KEY"
+
+PROVIDER_URL["aihubmix"]="https://aihubmix.com/v1"
+PROVIDER_MODELS["aihubmix"]="openai/gpt-4o openai/gpt-4o-mini openai/gpt-5.5 claude-sonnet-4-20250514 deepseek-v4-pro"
+PROVIDER_KEY["aihubmix"]="ANTHROPIC_API_KEY"
+
 print_header() {
   echo "========================================"
   echo "  Claude Code 模型切换工具"
@@ -68,6 +76,8 @@ get_provider() {
     *bigmodel*) echo "glm" ;;
     *minimaxi*) echo "minimax" ;;
     *aixor*) echo "aixor" ;;
+    *openrouter*) echo "openrouter" ;;
+    *aihubmix*) echo "aihubmix" ;;
     *) echo "unknown" ;;
   esac
 }
@@ -84,9 +94,9 @@ print_status() {
 
 list_providers() {
   echo ""
-  echo "支持的提供商 (2026年4月最新):"
+  echo "支持的提供商 (2026年6月最新):"
   echo ""
-  for p in deepseek qwen glm minimax aixor; do
+  for p in deepseek qwen glm minimax aixor openrouter aihubmix; do
     echo "★ $p"
     echo "  URL: ${PROVIDER_URL[$p]}"
     echo "  模型: ${PROVIDER_MODELS[$p]}"
@@ -100,7 +110,7 @@ switch_model() {
   
   if [[ -z "${PROVIDER_MODELS[$provider]:-}" ]]; then
     echo "错误: 未知提供商 '$provider'"
-    echo "支持: deepseek, qwen, glm, minimax, aixor"
+    echo "支持: deepseek, qwen, glm, minimax, aixor, openrouter, aihubmix"
     exit 1
   fi
   

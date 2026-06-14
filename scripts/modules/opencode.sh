@@ -19,13 +19,19 @@ DEFAULT_MODEL="deepseek/deepseek-v4-flash"
 PLAN_MODEL="openai/gpt-5.5"
 
 if command -v whiptail &>/dev/null; then
-  CHOICE=$(whiptail --title "opencode Default Model" --menu "Select default chat model:" 20 70 10 \
+  CHOICE=$(whiptail --title "opencode Default Model" --menu "Select default chat model:" 26 75 15 \
     "deepseek/deepseek-v4-flash" "DeepSeek V4 Flash (fast & cheap)" \
     "deepseek/deepseek-v4-pro" "DeepSeek V4 Pro (enhanced capability)" \
     "deepseek/deepseek-chat" "DeepSeek V3 Chat" \
     "openai/gpt-5.5" "OpenAI GPT-5.5" \
     "openai/gpt-4o" "OpenAI GPT-4o" \
-    "openrouter/anthropic/claude-3.5-sonnet" "Claude 3.5 Sonnet (via OpenRouter)" \
+    "openai/gpt-4o-mini" "OpenAI GPT-4o Mini" \
+    "openrouter/anthropic/claude-sonnet-4-20250514" "Claude Sonnet 4 (via OpenRouter)" \
+    "openrouter/anthropic/claude-opus-4-20250514" "Claude Opus 4 (via OpenRouter)" \
+    "openrouter/openai/gpt-5.5" "GPT-5.5 (via OpenRouter)" \
+    "openrouter/openai/gpt-4o" "GPT-4o (via OpenRouter)" \
+    "aihubmix/openai/gpt-5.5" "GPT-5.5 (via AIHubMix)" \
+    "aihubmix/anthropic/claude-sonnet-4-20250514" "Claude Sonnet 4 (via AIHubMix)" \
     "custom" "Custom model string" \
     3>&1 1>&2 2>&3) || CHOICE="deepseek/deepseek-v4-flash"
   
@@ -33,10 +39,11 @@ if command -v whiptail &>/dev/null; then
   DEFAULT_MODEL="$CHOICE"
   
   # Plan model selection
-  CHOICE=$(whiptail --title "opencode Plan Model" --menu "Select Plan model:" 15 70 6 \
+  CHOICE=$(whiptail --title "opencode Plan Model" --menu "Select Plan model:" 18 70 9 \
     "openai/gpt-5.5" "OpenAI GPT-5.5 (default)" \
-    "openai/o1-preview" "O1 Preview" \
-    "openai/o1-mini" "O1 Mini" \
+    "openai/gpt-4o" "OpenAI GPT-4o" \
+    "openrouter/openai/gpt-5.5" "GPT-5.5 (via OpenRouter)" \
+    "openrouter/anthropic/claude-sonnet-4-20250514" "Claude Sonnet 4 (via OpenRouter)" \
     "deepseek/deepseek-reasoner" "DeepSeek Reasoner" \
     "custom" "Custom" \
     3>&1 1>&2 2>&3) || CHOICE="openai/gpt-5.5"
@@ -46,6 +53,42 @@ if command -v whiptail &>/dev/null; then
 fi
 
 export DEFAULT_MODEL PLAN_MODEL
+
+# Relay/proxy configuration for OpenAI provider
+RELAY_PROVIDER=""
+RELAY_BASE_URL=""
+RELAY_KEY_NAME=""
+if command -v whiptail &>/dev/null; then
+  RELAY_CHOICE=$(whiptail --title "opencode Relay" --menu \
+    "Configure relay proxy for OpenAI/GPT models?" 16 60 5 \
+    "none"       "Direct OpenAI API (default)" \
+    "openrouter" "OpenRouter (https://openrouter.ai/api/v1)" \
+    "aihubmix"   "AIHubMix (https://aihubmix.com/v1)" \
+    "custom"     "Custom relay endpoint" \
+    3>&1 1>&2 2>&3) || RELAY_CHOICE="none"
+
+  case "$RELAY_CHOICE" in
+    openrouter)
+      RELAY_PROVIDER="openrouter"
+      RELAY_BASE_URL="https://openrouter.ai/api/v1"
+      RELAY_KEY_NAME="OPENROUTER_API_KEY"
+      api_key_get "$RELAY_KEY_NAME" "OpenRouter API Key" true
+      ;;
+    aihubmix)
+      RELAY_PROVIDER="aihubmix"
+      RELAY_BASE_URL="https://aihubmix.com/v1"
+      RELAY_KEY_NAME="AIHUBMIX_API_KEY"
+      api_key_get "$RELAY_KEY_NAME" "AIHubMix API Key" true
+      ;;
+    custom)
+      RELAY_PROVIDER="custom-relay"
+      read -r -p "Relay base URL: " RELAY_BASE_URL
+      read -r -p "API key env var name: " RELAY_KEY_NAME
+      api_key_get "$RELAY_KEY_NAME" "API Key for relay" true
+      ;;
+  esac
+fi
+export RELAY_PROVIDER RELAY_BASE_URL RELAY_KEY_NAME
 
 python3 - "$OPEN_CODE_CFG" << 'PYEOF'
 import json
@@ -64,14 +107,53 @@ config["$schema"] = "https://opencode.ai/config.json"
 config["model"] = os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v4-flash")
 
 provider = config.setdefault("provider", {})
+
+# DeepSeek provider (always present)
 provider["deepseek"] = {
     "npm": "@ai-sdk/deepseek",
     "options": {"apiKey": "{env:DEEPSEEK_API_KEY}"},
 }
+
+# OpenAI provider with optional relay baseURL
+openai_opts = {"apiKey": "{env:OPENAI_API_KEY}"}
+relay_base_url = os.environ.get("RELAY_BASE_URL", "")
+if relay_base_url:
+    openai_opts["baseURL"] = relay_base_url
 provider["openai"] = {
     "npm": "@ai-sdk/openai",
-    "options": {"apiKey": "{env:OPENAI_API_KEY}"},
+    "options": openai_opts,
 }
+
+# OpenRouter provider (always registered for openrouter/* model prefix)
+provider["openrouter"] = {
+    "npm": "@ai-sdk/openai",
+    "options": {
+        "apiKey": "{env:OPENROUTER_API_KEY}",
+        "baseURL": "https://openrouter.ai/api/v1",
+    },
+}
+
+# AIHubMix provider (always registered for aihubmix/* model prefix)
+provider["aihubmix"] = {
+    "npm": "@ai-sdk/openai",
+    "options": {
+        "apiKey": "{env:AIHUBMIX_API_KEY}",
+        "baseURL": "https://aihubmix.com/v1",
+    },
+}
+
+# Custom relay provider (added dynamically if configured)
+relay_provider = os.environ.get("RELAY_PROVIDER", "")
+if relay_provider == "custom-relay" and relay_base_url:
+    relay_key_name = os.environ.get("RELAY_KEY_NAME", "")
+    if relay_key_name:
+        provider[relay_provider] = {
+            "npm": "@ai-sdk/openai",
+            "options": {
+                "apiKey": "{env:%s}" % relay_key_name,
+                "baseURL": relay_base_url,
+            },
+        }
 
 agent = config.setdefault("agent", {})
 plan = agent.setdefault("plan", {})

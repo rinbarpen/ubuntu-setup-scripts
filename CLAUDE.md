@@ -19,23 +19,24 @@ sudo bash create-user.sh                     # User creation wizard (SSH/FTP/SFT
 
 ### Entry Point & Infrastructure
 
-- **`scripts/setup.sh`** — Main orchestrator. Sources `lib/utils.sh`, runs `sudo_check`, builds a whiptail checklist of 15 modules, executes selected modules in dependency-respecting order, prints pass/fail summary.
+- **`scripts/setup.sh`** — Main orchestrator. Sources `lib/utils.sh`, runs `sudo_check`, builds a whiptail checklist of 16 modules, executes selected modules in dependency-respecting order, prints pass/fail summary.
 - **`scripts/lib/utils.sh`** — Shared library used by all modules. Provides `log_info`/`log_warn`/`log_err` (colored output), `need_cmd` (asserts command exists), `confirm` (y/N prompt), `sudo_check` (sudo with keep-alive loop).
 
 ### Modules (`scripts/modules/`)
 
-15 independent setup scripts. Each defines `install_<name>()` and calls it at EOF. All source `utils.sh` for shared helpers.
+16 independent setup scripts. Each defines `install_<name>()` and calls it at EOF. All source `utils.sh` for shared helpers.
 
 | Category | Modules |
 |----------|---------|
 | System | `ubuntu-base` (packages, Docker, xrdp), `languages` (nvm/Node, Python, Rust, Go, uv), `shell` (fish + proxy), `fisher` |
 | Tooling | `git` (config, SSH key, git-lfs), `zerotier` (VPN), `zellij`, `browsers`, `vms` |
-| AI Agents | `openclaw`, `opencode`, `codex`, `claude-code` |
+| AI Agents | `openclaw`, `opencode`, `codex`, `claude-code`, `hermes-agent` |
 | Ecosystem | `vibma` (Figma MCP bridge), `skills` (external skill collections) |
 
 ### Standalone Scripts
 
-- **`model-switch.sh`** — Multi-provider model switcher for Claude Code (DeepSeek, Qwen, GLM, MiniMax, AiXor). Subcommands: `list`, `switch`, `status`, `backup`, `restore`.
+- **`model-switch.sh`** — Multi-provider model switcher for Claude Code (DeepSeek, Qwen, GLM, MiniMax, AiXor, OpenRouter, AIHubMix). Subcommands: `list`, `switch`, `status`, `backup`, `restore`.
+- **Relay (中转站) support** — All three agent modules (claude-code, codex, opencode) support configuring relay/proxy endpoints for GPT/CLAUDE models (OpenRouter, AIHubMix, custom). See each module script for details.
 - **`ssh-key-setup.sh`** — Interactive SSH key generation + remote copy + SSH config entry.
 - **`create-user.sh`** — Interactive Linux user creation with SSH/FTP/SFTP and vsftpd config.
 
@@ -47,7 +48,7 @@ SKILL.md files shipped alongside modules, installed to `~/.claude/skills/`:
 
 ### Tests (`scripts/tests/`)
 
-- **`test-agent-configs.sh`** — Integration test for the three agent config modules (claude-code, codex, opencode). Creates a temp dir with stubs for `npm`/`whiptail`, runs each module twice (idempotency check), uses Python3 asserts to validate generated TOML/JSON configs. Run with `bash scripts/tests/test-agent-configs.sh` (no sudo needed).
+- **`test-agent-configs.sh`** — Integration test for the four agent config modules (claude-code, codex, opencode, hermes-agent). Creates a temp dir with stubs for `npm`/`whiptail`, runs each module twice (idempotency check), uses Python3 asserts to validate generated TOML/JSON/YAML configs. Run with `bash scripts/tests/test-agent-configs.sh` (no sudo needed).
 
 ## Module Conventions
 
@@ -64,6 +65,7 @@ SKILL.md files shipped alongside modules, installed to `~/.claude/skills/`:
 | Codex | `~/.codex/config.toml` |
 | opencode | `~/.config/opencode/opencode.json` |
 | Claude Code profiles | `~/.config/cc-profiles/*.env` |
+| Hermes Agent | `~/.hermes/config.yaml` |
 
 ## Design Spec
 

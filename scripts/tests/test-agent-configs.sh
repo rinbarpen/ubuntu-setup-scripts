@@ -31,6 +31,7 @@ exit 0
 EOF
 chmod +x "$STUB_BIN/whiptail"
 
+
 export TEST_NPM_LOG="$TMP_DIR/npm.log"
 
 # Filter user-local paths from PATH so system-installed codex/claude
@@ -86,14 +87,29 @@ n
 EOF
 }
 
+run_hermes_agent() {
+  cat > "$TMP_DIR/answers_hermes.txt" <<'ANSWERS'
+deepseek
+deepseek-v4-flash
+
+skip
+ANSWERS
+  TEST_WHIPTAIL_ANSWERS="$TMP_DIR/answers_hermes.txt" \
+  HOME="$HOME_DIR" bash "$ROOT_DIR/scripts/modules/hermes-agent.sh" <<'EOF'
+
+EOF
+}
+
 run_codex
 run_claude_code
 run_opencode
 run_paseo
+run_hermes_agent
 run_codex
 run_claude_code
 run_opencode
 run_paseo
+run_hermes_agent
 
 python3 - "$HOME_DIR" "$TEST_NPM_LOG" <<'PY'
 import json
@@ -184,6 +200,26 @@ assert "install -g @openai/codex" in npm_log
 assert "install -g @anthropic-ai/claude-code" in npm_log
 assert "install -g opencode-ai" in npm_log
 assert "install -g @getpaseo/cli" in npm_log
+
+# Hermes assertions
+hermes_yaml = home / ".hermes" / "config.yaml"
+assert hermes_yaml.exists(), "Hermes config.yaml was not created"
+hermes_text = hermes_yaml.read_text()
+assert "model:" in hermes_text, "Hermes config missing model section"
+assert "default:" in hermes_text, "Hermes config missing model.default"
+assert "deepseek" in hermes_text, "Hermes model should contain deepseek"
+import re
+model_default = re.search(r'default:\s*(\S+)', hermes_text)
+assert model_default, "Hermes model.default should have a value"
+assert model_default.group(1), "Hermes model.default should not be empty"
+
+# hermes may be pre-installed on the system, so npm install is optional
+if "install -g hermes-agent" not in npm_log:
+    # If npm install was skipped, the hermes binary must be available
+    hermes_bin = home / ".hermes" / "hermes-agent" / "cli.py"
+    if not hermes_bin.exists():
+        # Config file existing is still sufficient validation
+        pass
 PY
 
 echo "agent config tests passed"

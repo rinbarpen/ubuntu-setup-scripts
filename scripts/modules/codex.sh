@@ -64,13 +64,15 @@ if command -v whiptail &>/dev/null; then
       3>&1 1>&2 2>&3) || _do_add="no"
     [[ "$_do_add" != "yes" ]] && break
 
-    PROVIDER_TYPE=$(whiptail --title "Provider Type" --menu "Select provider type:" 18 60 8 \
-      "openai"   "OpenAI (https://api.openai.com/v1)" \
-      "deepseek" "DeepSeek (https://api.deepseek.com)" \
-      "azure"    "Azure OpenAI" \
-      "ollama"   "Ollama (local)" \
-      "lmstudio" "LM Studio (local)" \
-      "custom"   "自定义供应商" \
+    PROVIDER_TYPE=$(whiptail --title "Provider Type" --menu "Select provider type:" 22 65 10 \
+      "openai"     "OpenAI (https://api.openai.com/v1)" \
+      "deepseek"   "DeepSeek (https://api.deepseek.com)" \
+      "openrouter" "OpenRouter relay (GPT, Claude via relay)" \
+      "aihubmix"   "AIHubMix relay (GPT, Claude via relay)" \
+      "azure"      "Azure OpenAI" \
+      "ollama"     "Ollama (local)" \
+      "lmstudio"   "LM Studio (local)" \
+      "custom"     "自定义供应商" \
       3>&1 1>&2 2>&3) || break
 
     _name=""
@@ -88,6 +90,14 @@ if command -v whiptail &>/dev/null; then
         _name="deepseek"; _display="DeepSeek"
         _base_url="https://api.deepseek.com"
         _env_key="DEEPSEEK_API_KEY"; _wire_api="chat" ;;
+      openrouter)
+        _name="openrouter"; _display="OpenRouter"
+        _base_url="https://openrouter.ai/api/v1"
+        _env_key="OPENROUTER_API_KEY"; _wire_api="chat" ;;
+      aihubmix)
+        _name="aihubmix"; _display="AIHubMix"
+        _base_url="https://aihubmix.com/v1"
+        _env_key="AIHUBMIX_API_KEY"; _wire_api="chat" ;;
       azure)
         _name="azure"; _display="Azure OpenAI"
         _base_url=$(whiptail --inputbox "Azure endpoint URL:" 8 60 --title "Azure" 3>&1 1>&2 2>&3) || break
@@ -214,11 +224,14 @@ fi
 
 if command -v whiptail &>/dev/null; then
   _plan_info="当前: ${CODEX_PLAN_MODEL}"
-  PLAN_CHOICE=$(whiptail --title "Codex Plan Model" --menu "Select model for Plan mode (deep reasoning):\n${_plan_info}" 20 75 10 \
-      "deepseek-v4-pro" "DeepSeek V4 Pro (推荐)" \
+  PLAN_CHOICE=$(whiptail --title "Codex Plan Model" --menu "Select model for Plan mode (deep reasoning):\n${_plan_info}" 22 75 12 \
+      "deepseek-v4-pro"  "DeepSeek V4 Pro (推荐)" \
       "deepseek-v4-flash" "DeepSeek V4 Flash (快但稍弱)" \
-      "custom" "Custom model ID" \
-      "do-not-set" "Do not set plan model" \
+      "gpt-5.5"          "GPT-5.5 (via OpenAI/relay)" \
+      "gpt-4o"           "GPT-4o (via OpenAI/relay)" \
+      "claude-sonnet-4-20250514" "Claude Sonnet 4 (via relay)" \
+      "custom"           "Custom model ID" \
+      "do-not-set"       "Do not set plan model" \
       3>&1 1>&2 2>&3) || PLAN_CHOICE=""
 
   case "$PLAN_CHOICE" in
@@ -555,10 +568,30 @@ mkdir -p "$FISH_FUNC_DIR"
 
 cat > "${FISH_FUNC_DIR}/codex_auth.fish" << 'EOF'
 function codex_auth
-    read -s -P "Enter OPENAI_API_KEY: " key
-    set -gx OPENAI_API_KEY $key
-    echo ""
-    echo "OPENAI_API_KEY set for this session"
+    set -l cfg "$HOME/.codex/config.toml"
+    set -l provider "openai"
+    if test -f "$cfg"
+        set provider (grep -m1 '^model_provider' "$cfg" | sed 's/.*= *"\(.*\)"/\1/' 2>/dev/null; or echo "openai")
+    end
+
+    switch "$provider"
+        case "openrouter"
+            read -s -P "Enter OPENROUTER_API_KEY: " key
+            set -gx OPENROUTER_API_KEY $key
+            echo "OPENROUTER_API_KEY set for this session"
+        case "aihubmix"
+            read -s -P "Enter AIHUBMIX_API_KEY: " key
+            set -gx AIHUBMIX_API_KEY $key
+            echo "AIHUBMIX_API_KEY set for this session"
+        case "deepseek"
+            read -s -P "Enter DEEPSEEK_API_KEY: " key
+            set -gx DEEPSEEK_API_KEY $key
+            echo "DEEPSEEK_API_KEY set for this session"
+        case '*'
+            read -s -P "Enter OPENAI_API_KEY: " key
+            set -gx OPENAI_API_KEY $key
+            echo "OPENAI_API_KEY set for this session"
+    end
 end
 EOF
 
@@ -567,10 +600,29 @@ cat >> "$HOME/.bashrc" << 'BASHEOF'
 
 # codex-auth (added by setup)
 codex-auth() {
-  read -r -s -p "Enter OPENAI_API_KEY: " key
-  echo ""
-  export OPENAI_API_KEY="$key"
-  echo "OPENAI_API_KEY set for this session"
+  local cfg="$HOME/.codex/config.toml"
+  local provider="openai"
+  if [[ -f "$cfg" ]]; then
+    provider=$(grep -m1 '^model_provider' "$cfg" | sed 's/.*= *"\(.*\)"/\1/' 2>/dev/null || echo "openai")
+  fi
+  case "$provider" in
+    openrouter)
+      read -r -s -p "Enter OPENROUTER_API_KEY: " key; echo ""
+      export OPENROUTER_API_KEY="$key"
+      echo "OPENROUTER_API_KEY set for this session" ;;
+    aihubmix)
+      read -r -s -p "Enter AIHUBMIX_API_KEY: " key; echo ""
+      export AIHUBMIX_API_KEY="$key"
+      echo "AIHUBMIX_API_KEY set for this session" ;;
+    deepseek)
+      read -r -s -p "Enter DEEPSEEK_API_KEY: " key; echo ""
+      export DEEPSEEK_API_KEY="$key"
+      echo "DEEPSEEK_API_KEY set for this session" ;;
+    *)
+      read -r -s -p "Enter OPENAI_API_KEY: " key; echo ""
+      export OPENAI_API_KEY="$key"
+      echo "OPENAI_API_KEY set for this session" ;;
+  esac
 }
 BASHEOF
 fi

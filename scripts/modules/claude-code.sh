@@ -27,10 +27,16 @@ fi
 
 if command -v whiptail &>/dev/null; then
   _model_info="当前: ${CLAUDE_MODEL}"
-  CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model:\n${_model_info}" 20 75 10 \
-      "deepseek-v4-pro" "DeepSeek V4 Pro" \
-      "deepseek-v4-flash" "DeepSeek V4 Flash" \
-      "custom" "Custom model ID" \
+  CHOICE=$(whiptail --title "Claude Code Model" --menu "Select default model:\n${_model_info}" 26 75 15 \
+      "deepseek-v4-pro"              "DeepSeek V4 Pro" \
+      "deepseek-v4-flash"            "DeepSeek V4 Flash" \
+      "openai/gpt-4o"                "GPT-4o (via relay)" \
+      "openai/gpt-4o-mini"           "GPT-4o Mini (via relay)" \
+      "openai/gpt-5.5"               "GPT-5.5 (via relay)" \
+      "anthropic/claude-sonnet-4-20250514"  "Claude Sonnet 4 (via relay)" \
+      "anthropic/claude-opus-4-20250514"    "Claude Opus 4 (via relay)" \
+      "claude-sonnet-4-20250514"     "Claude Sonnet 4 (direct Anthropic)" \
+      "custom"                       "Custom model ID" \
       3>&1 1>&2 2>&3) || CHOICE=""
 
   case "$CHOICE" in
@@ -57,10 +63,14 @@ fi
 
 if command -v whiptail &>/dev/null; then
   _plan_info="当前: ${CLAUDE_PLAN_MODEL}"
-  PLAN_CHOICE=$(whiptail --title "Claude Code Plan Model" --menu "Select model for Plan mode (deep reasoning):\n${_plan_info}" 20 75 10 \
-      "deepseek-v4-pro" "DeepSeek V4 Pro (推荐)" \
-      "deepseek-v4-flash" "DeepSeek V4 Flash (快但稍弱)" \
-      "custom" "Custom model ID" \
+  PLAN_CHOICE=$(whiptail --title "Claude Code Plan Model" --menu "Select model for Plan mode (deep reasoning):\n${_plan_info}" 23 75 12 \
+      "deepseek-v4-pro"              "DeepSeek V4 Pro (推荐)" \
+      "deepseek-v4-flash"            "DeepSeek V4 Flash (快但稍弱)" \
+      "openai/gpt-5.5"               "GPT-5.5 (via relay)" \
+      "openai/gpt-4o"                "GPT-4o (via relay)" \
+      "anthropic/claude-sonnet-4-20250514"  "Claude Sonnet 4 (via relay)" \
+      "claude-sonnet-4-20250514"     "Claude Sonnet 4 (direct Anthropic)" \
+      "custom"                       "Custom model ID" \
       3>&1 1>&2 2>&3) || PLAN_CHOICE=""
 
   case "$PLAN_CHOICE" in
@@ -124,9 +134,16 @@ env.setdefault("DISABLE_EXTRA_USAGE_COMMAND", "1")
 model = os.environ.get("CLAUDE_MODEL", "")
 if model:
     env.setdefault("ANTHROPIC_MODEL", model)
-    env.setdefault("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-v4-flash")
+    # Intelligent defaults: match sonnet to model family; keep haiku cheap
+    if "deepseek" in model:
+        _sonnet = "deepseek-v4-flash"
+    elif "claude" in model:
+        _sonnet = model   # relay: same Claude model for sonnet role
+    else:
+        _sonnet = model   # GPT models serve as own sonnet fallback
+    env.setdefault("ANTHROPIC_DEFAULT_SONNET_MODEL", _sonnet)
     env.setdefault("ANTHROPIC_DEFAULT_HAIKU_MODEL", "deepseek-v4-flash")
-    env.setdefault("CLAUDE_CODE_SUBAGENT_MODEL", "deepseek-v4-flash")
+    env.setdefault("CLAUDE_CODE_SUBAGENT_MODEL", model)
 env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "1000000")
 env.setdefault("CLAUDE_CODE_EFFORT_LEVEL", "max")
 plan_model = os.environ.get("CLAUDE_PLAN_MODEL")
@@ -159,7 +176,7 @@ if [[ -n "$_ep" ]]; then
 fi
 
 while confirm "Add a provider profile for Claude Code?"; do
-  echo "Providers: anthropic / openrouter / deepseek / custom"
+  echo "Providers: anthropic / openrouter / deepseek / aihubmix / custom"
   read -r -p "Provider name: " PROVIDER
   read -r -s -p "API key: " API_KEY; echo ""
 
@@ -178,6 +195,12 @@ EOF
     deepseek)
       cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
 export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_API_KEY="${API_KEY}"
+EOF
+      ;;
+    aihubmix)
+      cat > "${PROFILES_DIR}/${PROVIDER}.env" << EOF
+export ANTHROPIC_BASE_URL="https://aihubmix.com/v1"
 export ANTHROPIC_API_KEY="${API_KEY}"
 EOF
       ;;

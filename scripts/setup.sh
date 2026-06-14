@@ -8,7 +8,7 @@ need_cmd whiptail
 sudo_check
 
 # Ordered list — respects dependencies (languages before npm-based AI CLIs, shell before fisher)
-ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code paseo aris vibma skills)
+ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code hermes-agent paseo aris vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "Select modules to install (SPACE to toggle, ENTER to confirm):" 28 60 14 \
@@ -26,6 +26,7 @@ CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
    "opencode"     "opencode CLI + MCP"                  ON \
    "codex"        "codex CLI + MCP"                     ON \
    "claude-code"  "Claude Code + MCP"                   ON \
+   "hermes-agent" "Hermes Agent + MCP"                  ON \
    "paseo"        "Agent orchestration (Paseo)"          ON \
    "aris"         "Auto-Research-In-Sleep (ARIS)"        OFF \
    "vibma"        "Vibma MCP + Figma plugin + skills"   OFF \
