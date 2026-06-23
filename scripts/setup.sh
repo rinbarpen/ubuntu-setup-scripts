@@ -8,12 +8,13 @@ need_cmd whiptail
 sudo_check
 
 # Ordered list — respects dependencies (languages before npm-based AI CLIs, shell before fisher)
-ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code hermes-agent paseo aris vibma skills)
+ORDERED=(ubuntu-base docker-config api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code hermes-agent paseo aris vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "Select modules to install (SPACE to toggle, ENTER to confirm):" 28 60 14 \
-  "ubuntu-base"  "System tools, Docker, xrdp"          ON \
-  "api-config"   "API keys (Brave, GitHub, OpenAI...)"  ON \
+  "ubuntu-base"   "System tools, Docker, xrdp"           ON \
+  "docker-config" "Docker registry mirrors (daemon.json)" ON \
+  "api-config"    "API keys (Brave, GitHub, OpenAI...)"   ON \
   "languages"    "nvm/Node, Python, Rust, Go, uv"      ON \
   "shell"        "fish shell + proxy functions"         ON \
   "fisher"       "fisher + z, nvm, bass plugins"        ON \
