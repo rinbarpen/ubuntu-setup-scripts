@@ -8,7 +8,7 @@ need_cmd whiptail
 sudo_check
 
 # Ordered list — respects dependencies (languages before npm-based AI CLIs, shell before fisher)
-ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms openclaw opencode codex claude-code hermes-agent paseo aris vibma skills)
+ORDERED=(ubuntu-base api-config languages shell fisher git zerotier zellij browsers vms overleaf openclaw opencode codex claude-code hermes-agent paseo aris vibma skills)
 
 CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "Select modules to install (SPACE to toggle, ENTER to confirm):" 28 60 14 \
@@ -22,6 +22,7 @@ CHOICES=$(whiptail --title "Ubuntu Setup" --checklist \
   "zellij"       "zellij terminal multiplexer"         ON \
   "browsers"     "Chrome, Firefox"                     OFF \
   "vms"          "VirtualBox, QEMU/KVM"                OFF \
+   "overleaf"     "Self-hosted Overleaf (ShareLaTeX via Docker)" OFF \
    "openclaw"     "openclaw (npm)"                      OFF \
    "opencode"     "opencode CLI + MCP"                  ON \
    "codex"        "codex CLI + MCP"                     ON \

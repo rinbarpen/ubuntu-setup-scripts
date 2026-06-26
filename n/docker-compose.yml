@@ -1,0 +1,68 @@
+{
+  "services": {
+    "sharelatex": {
+      "image": "sharelatex/sharelatex:latest",
+      "container_name": "overleaf",
+      "depends_on": [
+        "redis",
+        "mongo"
+      ],
+      "ports": [
+        "n:80"
+      ],
+      "volumes": [
+        "data:/var/lib/sharelatex",
+        "texlive:/usr/local/texlive",
+        "fonts:/usr/share/fonts"
+      ],
+      "environment": [
+        "SHARELATEX_APP_NAME=n",
+        "SHARELATEX_SITE_URL=n",
+        "SHARELATEX_NAV_TITLE=n",
+        "SHARELATEX_LEFT_FOOTER=",
+        "SHARELATEX_RIGHT_FOOTER=",
+        "SHARELATEX_RICHTAGS=true",
+        "SHARELATEX_EMAIL_CONFIRMATION_DISABLED=true",
+        "MONGO_URL=mongodb://mongo/sharelatex_data",
+        "REDIS_HOST=redis",
+        "REDIS_PORT=6379",
+        "SHARELATEX_ADMIN_EMAIL=n"
+      ],
+      "restart": "always"
+    },
+    "redis": {
+      "image": "redis:7-alpine",
+      "container_name": "overleaf-redis",
+      "restart": "always",
+      "volumes": [
+        "redis:/data"
+      ],
+      "command": "redis-server --appendonly yes"
+    },
+    "mongo": {
+      "image": "mongo:6",
+      "container_name": "overleaf-mongo",
+      "restart": "always",
+      "volumes": [
+        "mongo:/data/db"
+      ]
+    }
+  },
+  "volumes": {
+    "data": {
+      "driver": "local"
+    },
+    "texlive": {
+      "driver": "local"
+    },
+    "fonts": {
+      "driver": "local"
+    },
+    "redis": {
+      "driver": "local"
+    },
+    "mongo": {
+      "driver": "local"
+    }
+  }
+}
