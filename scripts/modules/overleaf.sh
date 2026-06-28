@@ -6,6 +6,7 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 need_cmd docker
 need_cmd python3
 need_cmd curl
+need_cmd openssl
 # lsof is optional — port conflict check will be skipped if absent
 
 if ! docker compose version &>/dev/null; then
@@ -14,7 +15,7 @@ if ! docker compose version &>/dev/null; then
 fi
 
 install_overleaf() {
-  OVERLEAF_DIR="${HOME}/overleaf"
+  OVERLEAF_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)/overleaf"
   OVERLEAF_COMPOSE="${OVERLEAF_DIR}/docker-compose.yml"
   OVERLEAF_ENV="${OVERLEAF_DIR}/.env"
 
@@ -50,70 +51,36 @@ PYEOF
   fi
 
   # ── Defaults ─────────────────────────────────────────────────────────────
-  OVERLEAF_SITE_URL="${OVERLEAF_SITE_URL:-http://0.0.0.0:25681}"
+  OVERLEAF_SITE_URL="${OVERLEAF_SITE_URL:-http://localhost:25681}"
   OVERLEAF_APP_NAME="${OVERLEAF_APP_NAME:-Overleaf @Rczx}"
   OVERLEAF_PORT="${OVERLEAF_PORT:-25681}"
-  OVERLEAF_MONGO_INTERNAL="${OVERLEAF_MONGO_INTERNAL:-true}"
-  OVERLEAF_MONGO_URL="${OVERLEAF_MONGO_URL:-mongodb://mongo/sharelatex_data}"
+  OVERLEAF_MONGO_URL="${OVERLEAF_MONGO_URL:-mongodb://mongo/sharelatex}"
   OVERLEAF_EMAIL="${OVERLEAF_EMAIL:-}"
-  OVERLEAF_SMTP_ENABLE="${OVERLEAF_SMTP_ENABLE:-false}"
-  OVERLEAF_SMTP_HOST="${OVERLEAF_SMTP_HOST:-}"
-  OVERLEAF_SMTP_PORT="${OVERLEAF_SMTP_PORT:-587}"
-  OVERLEAF_SMTP_USER="${OVERLEAF_SMTP_USER:-}"
-  OVERLEAF_SMTP_PASS="${OVERLEAF_SMTP_PASS:-}"
-  OVERLEAF_SMTP_SECURE="${OVERLEAF_SMTP_SECURE:-false}"
-  OVERLEAF_SMTP_FROM="${OVERLEAF_SMTP_FROM:-}"
+  OVERLEAF_INVITE_TOKEN_SECRET="${OVERLEAF_INVITE_TOKEN_SECRET:-}"
+  OVERLEAF_LEFT_FOOTER="${OVERLEAF_LEFT_FOOTER:-}"
+  OVERLEAF_RIGHT_FOOTER="${OVERLEAF_RIGHT_FOOTER:-}"
+  OVERLEAF_EMAIL_FROM_ADDRESS="${OVERLEAF_EMAIL_FROM_ADDRESS:-}"
+  OVERLEAF_EMAIL_SMTP_HOST="${OVERLEAF_EMAIL_SMTP_HOST:-}"
+  OVERLEAF_EMAIL_SMTP_PORT="${OVERLEAF_EMAIL_SMTP_PORT:-587}"
+  OVERLEAF_EMAIL_SMTP_SECURE="${OVERLEAF_EMAIL_SMTP_SECURE:-false}"
+  OVERLEAF_EMAIL_SMTP_USER="${OVERLEAF_EMAIL_SMTP_USER:-}"
+  OVERLEAF_EMAIL_SMTP_PASS="${OVERLEAF_EMAIL_SMTP_PASS:-}"
+  OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH="${OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH:-}"
+  OVERLEAF_EMAIL_SMTP_IGNORE_TLS="${OVERLEAF_EMAIL_SMTP_IGNORE_TLS:-}"
   OVERLEAF_INSTALL_TEXLIVE="${OVERLEAF_INSTALL_TEXLIVE:-false}"
   OVERLEAF_INSTALL_CJK="${OVERLEAF_INSTALL_CJK:-false}"
   OVERLEAF_INSTALL_XELATEX="${OVERLEAF_INSTALL_XELATEX:-false}"
-  OVERLEAF_COMMIT_CUSTOM="${OVERLEAF_COMMIT_CUSTOM:-false}"
-  OVERLEAF_IMAGE="${OVERLEAF_IMAGE:-sharelatex/sharelatex:latest}"
+  OVERLEAF_IMAGE="${OVERLEAF_IMAGE:-sharelatex/sharelatex:with-texlive}"
 
   # ── Whiptail prompts ────────────────────────────────────────────────────
   if command -v whiptail &>/dev/null; then
     whiptail --msgbox "Overleaf (ShareLaTeX Community Edition) self-hosted setup.
 
-This will deploy ShareLaTeX via Docker Compose with:
-  - ShareLaTeX web app + Redis (always)
-  - MongoDB companion container (optional, or external DB)
+This will deploy Overleaf via Docker Compose with:
+  - Overleaf web app + Redis + MongoDB (replica set)
   - Optional: TeX Live, CJK fonts, XeLaTeX
 
 Requirements: Docker + docker compose plugin." 14 60
-
-    # MongoDB mode
-    _mongo_choice=$(whiptail --title "MongoDB" --menu "MongoDB configuration:" 14 60 2 \
-        "internal" "Run MongoDB as companion container (fully self-contained)" \
-        "external" "Use an external MongoDB connection URL" \
-        3>&1 1>&2 2>&3) || _mongo_choice=""
-    case "$_mongo_choice" in
-      internal)
-        OVERLEAF_MONGO_INTERNAL="true"
-        OVERLEAF_MONGO_URL="mongodb://mongo/sharelatex_data"
-        ;;
-      external)
-        OVERLEAF_MONGO_INTERNAL="false"
-        OVERLEAF_MONGO_URL=""
-        while [[ -z "$OVERLEAF_MONGO_URL" ]]; do
-          read -r -p "MongoDB connection URL (mongodb://...): " OVERLEAF_MONGO_URL
-        done
-        ;;
-    esac
-  fi
-
-  # Non-whiptail MongoDB fallback
-  if [[ ! -v _mongo_choice ]] && ! command -v whiptail &>/dev/null; then
-    echo "MongoDB mode: internal (companion container) or external (existing server)?"
-    read -r -p "Choice [internal]: " _mongo_fb
-    case "${_mongo_fb,,}" in
-      external)
-        OVERLEAF_MONGO_INTERNAL="false"
-        OVERLEAF_MONGO_URL=""
-        while [[ -z "$OVERLEAF_MONGO_URL" ]]; do
-          read -r -p "MongoDB connection URL (mongodb://...): " OVERLEAF_MONGO_URL
-        done
-        ;;
-      *) ;;  # keep default (internal)
-    esac
   fi
 
   # Site URL
@@ -144,26 +111,21 @@ Requirements: Docker + docker compose plugin." 14 60
     log_warn "lsof not found — skipping port conflict check"
   fi
 
-  # Data directory
-  read -r -p "Data directory [${OVERLEAF_DIR}]: " _dir_input
-  [[ -n "$_dir_input" ]] && OVERLEAF_DIR="$_dir_input"
-  OVERLEAF_COMPOSE="${OVERLEAF_DIR}/docker-compose.yml"
-  OVERLEAF_ENV="${OVERLEAF_DIR}/.env"
-
   # Admin email
   read -r -p "Admin email (optional): " _email_input
   [[ -n "$_email_input" ]] && OVERLEAF_EMAIL="$_email_input"
 
   # SMTP
   if confirm "Configure SMTP for email notifications?"; then
-    OVERLEAF_SMTP_ENABLE="true"
-    read -r -p "SMTP host: " OVERLEAF_SMTP_HOST
-    read -r -p "SMTP port [${OVERLEAF_SMTP_PORT}]: " _smtp_port
-    [[ -n "$_smtp_port" ]] && OVERLEAF_SMTP_PORT="$_smtp_port"
-    read -r -p "SMTP user: " OVERLEAF_SMTP_USER
-    read -r -s -p "SMTP password: " OVERLEAF_SMTP_PASS; echo ""
-    confirm "Use TLS (SMTP secure)?" && OVERLEAF_SMTP_SECURE="true" || OVERLEAF_SMTP_SECURE="false"
-    read -r -p "SMTP from address: " OVERLEAF_SMTP_FROM
+    read -r -p "SMTP host: " OVERLEAF_EMAIL_SMTP_HOST
+    read -r -p "SMTP port [${OVERLEAF_EMAIL_SMTP_PORT}]: " _smtp_port
+    [[ -n "$_smtp_port" ]] && OVERLEAF_EMAIL_SMTP_PORT="$_smtp_port"
+    read -r -p "SMTP user: " OVERLEAF_EMAIL_SMTP_USER
+    read -r -s -p "SMTP password: " OVERLEAF_EMAIL_SMTP_PASS; echo ""
+    confirm "Use TLS (SMTP secure)?" && OVERLEAF_EMAIL_SMTP_SECURE="true" || OVERLEAF_EMAIL_SMTP_SECURE="false"
+    read -r -p "SMTP from address: " OVERLEAF_EMAIL_FROM_ADDRESS
+    confirm "Reject unauthorized TLS certs?" && OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH="true" || OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH="false"
+    confirm "Ignore TLS?" && OVERLEAF_EMAIL_SMTP_IGNORE_TLS="true" || OVERLEAF_EMAIL_SMTP_IGNORE_TLS="false"
   fi
 
   # Post-install options
@@ -177,19 +139,23 @@ Requirements: Docker + docker compose plugin." 14 60
     OVERLEAF_INSTALL_XELATEX="true"
   fi
 
-  # ── Create directories ──────────────────────────────────────────────────
-  mkdir -p "$OVERLEAF_DIR"
-  mkdir -p "$OVERLEAF_DIR/data" "$OVERLEAF_DIR/texlive" "$OVERLEAF_DIR/fonts" "$OVERLEAF_DIR/redis"
-  if [[ "$OVERLEAF_MONGO_INTERNAL" == "true" ]]; then
-    mkdir -p "$OVERLEAF_DIR/mongo"
-  fi
-
   # ── Export for Python3 heredocs ─────────────────────────────────────────
   export OVERLEAF_DIR OVERLEAF_SITE_URL OVERLEAF_APP_NAME OVERLEAF_PORT
-  export OVERLEAF_MONGO_INTERNAL OVERLEAF_MONGO_URL OVERLEAF_EMAIL
-  export OVERLEAF_SMTP_ENABLE OVERLEAF_SMTP_HOST OVERLEAF_SMTP_PORT
-  export OVERLEAF_SMTP_USER OVERLEAF_SMTP_PASS OVERLEAF_SMTP_SECURE OVERLEAF_SMTP_FROM
+  export OVERLEAF_MONGO_URL OVERLEAF_EMAIL
+  export OVERLEAF_INVITE_TOKEN_SECRET
+  export OVERLEAF_LEFT_FOOTER OVERLEAF_RIGHT_FOOTER
+  export OVERLEAF_EMAIL_FROM_ADDRESS
+  export OVERLEAF_EMAIL_SMTP_HOST OVERLEAF_EMAIL_SMTP_PORT
+  export OVERLEAF_EMAIL_SMTP_SECURE OVERLEAF_EMAIL_SMTP_USER OVERLEAF_EMAIL_SMTP_PASS
+  export OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH OVERLEAF_EMAIL_SMTP_IGNORE_TLS
   export OVERLEAF_IMAGE
+
+  # ── Auto-generate INVITE_TOKEN_SECRET ──────────────────────────────────
+  if [[ -z "$OVERLEAF_INVITE_TOKEN_SECRET" ]]; then
+    OVERLEAF_INVITE_TOKEN_SECRET="$(openssl rand -base64 32)"
+    export OVERLEAF_INVITE_TOKEN_SECRET
+    log_info "Generated OVERLEAF_INVITE_TOKEN_SECRET"
+  fi
 
   # ── Write .env file ─────────────────────────────────────────────────────
   python3 - "$OVERLEAF_ENV" << 'PYEOF'
@@ -207,19 +173,22 @@ def q(s):
 
 env = {
     "OVERLEAF_SITE_URL": os.environ.get("OVERLEAF_SITE_URL", ""),
-    "OVERLEAF_APP_NAME": os.environ.get("OVERLEAF_APP_NAME", "Overleaf"),
+    "OVERLEAF_APP_NAME": os.environ.get("OVERLEAF_APP_NAME", "Overleaf @Rczx"),
     "OVERLEAF_PORT": os.environ.get("OVERLEAF_PORT", "25681"),
-    "OVERLEAF_MONGO_INTERNAL": os.environ.get("OVERLEAF_MONGO_INTERNAL", "true"),
-    "OVERLEAF_MONGO_URL": os.environ.get("OVERLEAF_MONGO_URL", "mongodb://mongo/sharelatex_data"),
+    "OVERLEAF_MONGO_URL": os.environ.get("OVERLEAF_MONGO_URL", "mongodb://mongo/sharelatex"),
     "OVERLEAF_EMAIL": os.environ.get("OVERLEAF_EMAIL", ""),
-    "OVERLEAF_SMTP_ENABLE": os.environ.get("OVERLEAF_SMTP_ENABLE", "false"),
-    "OVERLEAF_SMTP_HOST": os.environ.get("OVERLEAF_SMTP_HOST", ""),
-    "OVERLEAF_SMTP_PORT": os.environ.get("OVERLEAF_SMTP_PORT", "587"),
-    "OVERLEAF_SMTP_USER": os.environ.get("OVERLEAF_SMTP_USER", ""),
-    "OVERLEAF_SMTP_PASS": os.environ.get("OVERLEAF_SMTP_PASS", ""),
-    "OVERLEAF_SMTP_SECURE": os.environ.get("OVERLEAF_SMTP_SECURE", "false"),
-    "OVERLEAF_SMTP_FROM": os.environ.get("OVERLEAF_SMTP_FROM", ""),
-    "OVERLEAF_IMAGE": os.environ.get("OVERLEAF_IMAGE", "sharelatex/sharelatex:latest"),
+    "OVERLEAF_INVITE_TOKEN_SECRET": os.environ.get("OVERLEAF_INVITE_TOKEN_SECRET", ""),
+    "OVERLEAF_LEFT_FOOTER": os.environ.get("OVERLEAF_LEFT_FOOTER", ""),
+    "OVERLEAF_RIGHT_FOOTER": os.environ.get("OVERLEAF_RIGHT_FOOTER", ""),
+    "OVERLEAF_IMAGE": os.environ.get("OVERLEAF_IMAGE", "sharelatex/sharelatex:with-texlive"),
+    "OVERLEAF_EMAIL_FROM_ADDRESS": os.environ.get("OVERLEAF_EMAIL_FROM_ADDRESS", ""),
+    "OVERLEAF_EMAIL_SMTP_HOST": os.environ.get("OVERLEAF_EMAIL_SMTP_HOST", ""),
+    "OVERLEAF_EMAIL_SMTP_PORT": os.environ.get("OVERLEAF_EMAIL_SMTP_PORT", "587"),
+    "OVERLEAF_EMAIL_SMTP_SECURE": os.environ.get("OVERLEAF_EMAIL_SMTP_SECURE", "false"),
+    "OVERLEAF_EMAIL_SMTP_USER": os.environ.get("OVERLEAF_EMAIL_SMTP_USER", ""),
+    "OVERLEAF_EMAIL_SMTP_PASS": os.environ.get("OVERLEAF_EMAIL_SMTP_PASS", ""),
+    "OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH": os.environ.get("OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH", ""),
+    "OVERLEAF_EMAIL_SMTP_IGNORE_TLS": os.environ.get("OVERLEAF_EMAIL_SMTP_IGNORE_TLS", ""),
 }
 
 lines = []
@@ -230,114 +199,6 @@ path.write_text("".join(lines))
 PYEOF
   log_info ".env written to $OVERLEAF_ENV"
   chmod 600 "$OVERLEAF_ENV"
-
-  # ── Write docker-compose.yml ────────────────────────────────────────────
-  python3 - "$OVERLEAF_COMPOSE" << 'PYEOF'
-import os, pathlib, sys, json
-
-path = pathlib.Path(sys.argv[1])
-
-site_url   = os.environ.get("OVERLEAF_SITE_URL", "http://0.0.0.0:25681")
-app_name   = os.environ.get("OVERLEAF_APP_NAME", "Overleaf")
-port       = os.environ.get("OVERLEAF_PORT", "25681")
-mongo_url  = os.environ.get("OVERLEAF_MONGO_URL", "mongodb://mongo/sharelatex_data")
-email_addr = os.environ.get("OVERLEAF_EMAIL", "")
-mongo_internal = os.environ.get("OVERLEAF_MONGO_INTERNAL", "true") == "true"
-image      = os.environ.get("OVERLEAF_IMAGE", "sharelatex/sharelatex:latest")
-
-smtp_enable = os.environ.get("OVERLEAF_SMTP_ENABLE", "false") == "true"
-smtp_host   = os.environ.get("OVERLEAF_SMTP_HOST", "")
-smtp_port   = os.environ.get("OVERLEAF_SMTP_PORT", "587")
-smtp_user   = os.environ.get("OVERLEAF_SMTP_USER", "")
-smtp_pass   = os.environ.get("OVERLEAF_SMTP_PASS", "")
-smtp_secure = os.environ.get("OVERLEAF_SMTP_SECURE", "false") == "true"
-smtp_from   = os.environ.get("OVERLEAF_SMTP_FROM", "")
-
-volumes = {
-    "data":   {"driver": "local"},
-    "texlive":{"driver": "local"},
-    "fonts":  {"driver": "local"},
-    "redis":  {"driver": "local"},
-}
-
-if mongo_internal:
-    volumes["mongo"] = {"driver": "local"}
-
-services = {}
-
-# ── sharelatex service ──
-sharelatex_env = [
-    f"SHARELATEX_APP_NAME={app_name}",
-    f"SHARELATEX_SITE_URL={site_url}",
-    f"SHARELATEX_NAV_TITLE={app_name}",
-    "SHARELATEX_LEFT_FOOTER=",
-    "SHARELATEX_RIGHT_FOOTER=",
-    "SHARELATEX_RICHTAGS=true",
-    "SHARELATEX_EMAIL_CONFIRMATION_DISABLED=true",
-    f"MONGO_URL={mongo_url}",
-    "REDIS_HOST=redis",
-    "REDIS_PORT=6379",
-]
-
-if email_addr:
-    sharelatex_env.append(f"SHARELATEX_ADMIN_EMAIL={email_addr}")
-
-if smtp_enable and smtp_host:
-    sharelatex_env.append("SHARELATEX_EMAIL_CONFIRMATION_DISABLED=false")
-    sharelatex_env.append(f"SHARELATEX_EMAIL_HOST={smtp_host}")
-    sharelatex_env.append(f"SHARELATEX_EMAIL_PORT={smtp_port}")
-    if smtp_user:
-        sharelatex_env.append(f"SHARELATEX_EMAIL_USER={smtp_user}")
-    if smtp_pass:
-        sharelatex_env.append(f"SHARELATEX_EMAIL_PASS={smtp_pass}")
-    sharelatex_env.append(f"SHARELATEX_EMAIL_SECURE={'true' if smtp_secure else 'false'}")
-    if smtp_from:
-        sharelatex_env.append(f"SHARELATEX_EMAIL_FROM_ADDRESS={smtp_from}")
-
-sharelatex_depends = ["redis"]
-if mongo_internal:
-    sharelatex_depends.append("mongo")
-
-services["sharelatex"] = {
-    "image": image,
-    "container_name": "overleaf",
-    "depends_on": sharelatex_depends,
-    "ports": [f"{port}:80"],
-    "volumes": [
-        "data:/var/lib/sharelatex",
-        "texlive:/usr/local/texlive",
-        "fonts:/usr/share/fonts",
-    ],
-    "environment": sharelatex_env,
-    "restart": "always",
-}
-
-# ── redis service ──
-services["redis"] = {
-    "image": "redis:7-alpine",
-    "container_name": "overleaf-redis",
-    "restart": "always",
-    "volumes": ["redis:/data"],
-    "command": "redis-server --appendonly yes",
-}
-
-# ── mongo service (optional) ──
-if mongo_internal:
-    services["mongo"] = {
-        "image": "mongo:6",
-        "container_name": "overleaf-mongo",
-        "restart": "always",
-        "volumes": ["mongo:/data/db"],
-    }
-
-compose = {
-    "services": services,
-    "volumes": volumes,
-}
-
-path.write_text(json.dumps(compose, indent=2) + "\n")
-PYEOF
-  log_info "docker-compose.yml written to $OVERLEAF_COMPOSE"
 
   # ── Docker compose up ───────────────────────────────────────────────────
   log_info "Starting Overleaf containers..."
@@ -413,16 +274,7 @@ for line in lines:
 path.write_text("".join(out))
 PYEOF2
 
-      # Regenerate compose with new image
-      python3 - "$OVERLEAF_COMPOSE" << 'PYEOF2'
-import os, pathlib, sys, json
-path = pathlib.Path(sys.argv[1])
-compose = json.loads(path.read_text())
-compose["services"]["sharelatex"]["image"] = "overleaf-custom:latest"
-path.write_text(json.dumps(compose, indent=2) + "\n")
-PYEOF2
-
-      log_info "Compose file updated to use overleaf-custom:latest"
+      log_info ".env updated to use overleaf-custom:latest"
     fi
   fi
 
@@ -430,17 +282,17 @@ PYEOF2
   FISH_FUNC_DIR="$HOME/.config/fish/functions"
   mkdir -p "$FISH_FUNC_DIR"
 
-  cat > "${FISH_FUNC_DIR}/overleaf.fish" << 'FISHEOF'
+  cat > "${FISH_FUNC_DIR}/overleaf.fish" << FISHEOF
 function overleaf-compose
-    docker compose -f $HOME/overleaf/docker-compose.yml $argv
+    docker compose -f ${OVERLEAF_DIR}/docker-compose.yml \$argv
 end
 
 function overleaf-logs
-    overleaf-compose logs -f $argv
+    overleaf-compose logs -f \$argv
 end
 
 function overleaf-restart
-    overleaf-compose restart $argv
+    overleaf-compose restart \$argv
 end
 
 function overleaf-shell
@@ -466,13 +318,13 @@ end
 FISHEOF
 
   if ! grep -q "# overleaf (added by setup)" "$HOME/.bashrc" 2>/dev/null; then
-    cat >> "$HOME/.bashrc" << 'BASHEOF'
+    cat >> "$HOME/.bashrc" << BASHEOF
 
 # overleaf (added by setup)
-OVERLEAF_COMPOSE="$HOME/overleaf/docker-compose.yml"
-overleaf-compose() { docker compose -f "$OVERLEAF_COMPOSE" "$@"; }
-overleaf-logs()    { overleaf-compose logs -f "$@"; }
-overleaf-restart() { overleaf-compose restart "$@"; }
+OVERLEAF_COMPOSE="${OVERLEAF_DIR}/docker-compose.yml"
+overleaf-compose() { docker compose -f "\$OVERLEAF_COMPOSE" "\$@"; }
+overleaf-logs()    { overleaf-compose logs -f "\$@"; }
+overleaf-restart() { overleaf-compose restart "\$@"; }
 overleaf-shell()   { overleaf-compose exec sharelatex bash; }
 overleaf-ps()      { overleaf-compose ps; }
 overleaf-up()      { overleaf-compose up -d; }
