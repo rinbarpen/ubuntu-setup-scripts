@@ -1,0 +1,76 @@
+# Overleaf (ShareLaTeX Community Edition) — self-hosted
+# Usage: cp .env.example .env && docker compose up -d
+# Access: http://localhost:25681  (first registered user becomes admin)
+
+services:
+  sharelatex:
+    image: ${OVERLEAF_IMAGE:-sharelatex/sharelatex:with-texlive}
+    container_name: overleaf
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "${OVERLEAF_PORT:-25681}:80"
+    volumes:
+      - data:/var/lib/overleaf
+      - texlive:/usr/local/texlive
+      - fonts:/usr/share/fonts
+    environment:
+      OVERLEAF_APP_NAME: ${OVERLEAF_APP_NAME:-Overleaf}
+      OVERLEAF_SITE_URL: ${OVERLEAF_SITE_URL:-http://localhost:25681}
+      OVERLEAF_NAV_TITLE: ${OVERLEAF_APP_NAME:-Overleaf}
+      OVERLEAF_LEFT_FOOTER: ${OVERLEAF_LEFT_FOOTER:-}
+      OVERLEAF_RIGHT_FOOTER: ${OVERLEAF_RIGHT_FOOTER:-}
+      OVERLEAF_MONGO_URL: ${OVERLEAF_MONGO_URL:-mongodb://mongo/sharelatex}
+      OVERLEAF_REDIS_HOST: ${OVERLEAF_REDIS_HOST:-redis}
+      REDIS_HOST: ${OVERLEAF_REDIS_HOST:-redis}
+      OVERLEAF_ADMIN_EMAIL: ${OVERLEAF_EMAIL:-}
+      OVERLEAF_EMAIL_FROM_ADDRESS: ${OVERLEAF_EMAIL_FROM_ADDRESS:-}
+      OVERLEAF_EMAIL_SMTP_HOST: ${OVERLEAF_EMAIL_SMTP_HOST:-}
+      OVERLEAF_EMAIL_SMTP_PORT: ${OVERLEAF_EMAIL_SMTP_PORT:-587}
+      OVERLEAF_EMAIL_SMTP_SECURE: ${OVERLEAF_EMAIL_SMTP_SECURE:-false}
+      OVERLEAF_EMAIL_SMTP_USER: ${OVERLEAF_EMAIL_SMTP_USER:-}
+      OVERLEAF_EMAIL_SMTP_PASS: ${OVERLEAF_EMAIL_SMTP_PASS:-}
+      OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH: ${OVERLEAF_EMAIL_SMTP_TLS_REJECT_UNAUTH:-}
+      OVERLEAF_EMAIL_SMTP_IGNORE_TLS: ${OVERLEAF_EMAIL_SMTP_IGNORE_TLS:-}
+      OVERLEAF_INVITE_TOKEN_SECRET: ${OVERLEAF_INVITE_TOKEN_SECRET}
+      ENABLED_LINKED_FILE_TYPES: project_file,project_output_file
+      ENABLE_CONVERSIONS: "true"
+      EMAIL_CONFIRMATION_DISABLED: "true"
+      TEXMFVAR: /var/lib/overleaf/tmp/texmf-var
+    restart: always
+
+  redis:
+    image: redis:6.2
+    container_name: overleaf-redis
+    restart: always
+    volumes:
+      - redis:/data
+    command: redis-server --appendonly yes
+
+  mongo:
+    image: mongo:8.0
+    container_name: overleaf-mongo
+    restart: always
+    command: "--replSet overleaf"
+    volumes:
+      - mongo:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    environment:
+      MONGO_INITDB_DATABASE: sharelatex
+    extra_hosts:
+      - mongo:127.0.0.1
+    healthcheck:
+      test: echo 'db.stats().ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  data:
+  texlive:
+  fonts:
+  redis:
+  mongo:
