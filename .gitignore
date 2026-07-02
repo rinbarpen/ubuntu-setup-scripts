@@ -1,2 +1,4 @@
 .codex
 overleaf/.env
+rinbake/node_modules/
+rinbake/.env
