@@ -112,6 +112,27 @@ ssh-key-setup.sh      # SSH key generation wizard
 create-user.sh        # Interactive user creation wizard
 ```
 
+## rinbake CLI
+
+`rinbake/` 是独立的 bun CLI 工具，提供交互式 Dev环境配置向导。
+
+```bash
+cd rinbake
+bash install.sh    # 全局安装后可直接使用 rinbake <command>
+```
+
+子命令：
+
+| 命令 | 说明 |
+|------|------|
+| `rinbake init` | 交互式安装向导 |
+| `rinbake install [module...]` | 安装模块 |
+| `rinbake install --all` | 全部安装 |
+| `rinbake configure [module...]` | 配置模块 |
+| `rinbake keys` | API Key 管理 |
+| `rinbake mcp` | MCP 服务器管理 |
+| `rinbake status` | 查看安装状态 |
+
 ## Requirements
 
 - Ubuntu 22.04 or 24.04

@@ -2,6 +2,7 @@ import type { ModuleDefinition } from '../types'
 
 import * as ubuntuBase from './system/ubuntu-base'
 import * as languages from './system/languages'
+import * as bun from './system/bun'
 import * as shell from './system/shell'
 import * as fisher from './system/fisher'
 import * as git from './system/git'
@@ -30,7 +31,7 @@ interface ModuleExports {
 }
 
 const modules: ModuleExports[] = [
-  ubuntuBase, languages, shell, fisher, git,
+  ubuntuBase, languages, bun, shell, fisher, git,
   opencode, claudeCode, codex, hermesAgent, openclaw, paseo,
   relay, zerotier, zellij, browsers, vms, skills,
 ]
