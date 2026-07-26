@@ -1,0 +1,53 @@
+{
+  "$schema": "https://rinbarpen.dev/schemas/agent-preset-v1.json",
+  "name": "deepseek-default",
+  "displayName": "DeepSeek V4 Default",
+  "description": "All agents use DeepSeek V4 models with cache optimizations enabled",
+  "version": 1,
+  "provider": {
+    "defaultProvider": "deepseek"
+  },
+  "agents": {
+    "claude-code": {
+      "enabled": true,
+      "model": "deepseek-v4-flash",
+      "planModel": "deepseek-v4-pro",
+      "permissionMode": "acceptEdits"
+    },
+    "codex": {
+      "enabled": true,
+      "model": "deepseek-v4-pro",
+      "planModel": "deepseek-v4-pro",
+      "reasoningEffort": "medium",
+      "planReasoningEffort": "xhigh",
+      "approvalPolicy": "on-request"
+    },
+    "opencode": {
+      "enabled": true,
+      "model": "deepseek/deepseek-v4-flash",
+      "planModel": "openai/gpt-5.5",
+      "reasoningEffort": "xhigh"
+    },
+    "pi": {
+      "enabled": true,
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "maxTokens": 1000000,
+      "cache": { "consistentPrompt": true }
+    },
+    "omp": {
+      "enabled": true,
+      "model": "deepseek-v4-pro",
+      "provider": "deepseek",
+      "features": {
+        "hashAnchoredEdits": true,
+        "snapcompact": true,
+        "lsp": false,
+        "dap": false
+      }
+    }
+  },
+  "mcp": {
+    "scenarios": ["daily", "chat"]
+  }
+}

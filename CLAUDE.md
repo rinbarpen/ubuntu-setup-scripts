@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 bash scripts/setup.sh                        # Main entry: whiptail menu → run selected modules
 bash scripts/modules/<name>.sh               # Run any single module standalone
-bash scripts/tests/test-agent-configs.sh     # Integration test (no sudo required)
+bash scripts/tests/test-agent-configs.sh     # Integration test for agent configs (no sudo required)
+bash scripts/tests/test-all-agents.sh       # Integration test for pi, omp, all-agents (no sudo required)
+bash scripts/modules/all-agents.sh          # Unified: configure all 5 AI agents at once
 ./model-switch.sh list                       # List supported AI providers
 ./model-switch.sh switch <provider> [model]  # Switch Claude Code provider/model
 ./model-switch.sh status                     # Show current Claude Code model config
@@ -19,8 +21,9 @@ sudo bash create-user.sh                     # User creation wizard (SSH/FTP/SFT
 
 ### Entry Point & Infrastructure
 
-- **`scripts/setup.sh`** — Main orchestrator. Sources `lib/utils.sh`, runs `sudo_check`, builds a whiptail checklist of 16 modules, executes selected modules in dependency-respecting order, prints pass/fail summary.
+- **`scripts/setup.sh`** — Main orchestrator. Sources `lib/utils.sh`, runs `sudo_check`, builds a whiptail checklist of 24 modules, executes selected modules in dependency-respecting order, prints pass/fail summary.
 - **`scripts/lib/utils.sh`** — Shared library used by all modules. Provides `log_info`/`log_warn`/`log_err` (colored output), `need_cmd` (asserts command exists), `confirm` (y/N prompt), `sudo_check` (sudo with keep-alive loop).
+- **`scripts/lib/mcp.sh`** — Centralized MCP server management (scenario → server mapping, credential collection, config writing for JSON/TOML). Used by pi, omp, and all-agents modules.
 
 ### Modules (`scripts/modules/`)
 
@@ -30,7 +33,8 @@ sudo bash create-user.sh                     # User creation wizard (SSH/FTP/SFT
 |----------|---------|
 | System | `ubuntu-base` (packages, Docker, xrdp), `languages` (nvm/Node, Python, Rust, Go, uv), `shell` (fish + proxy), `fisher` |
 | Tooling | `git` (config, SSH key, git-lfs), `zerotier` (VPN), `zellij`, `browsers`, `vms` |
-| AI Agents | `openclaw`, `opencode`, `codex`, `claude-code`, `hermes-agent` |
+| AI Agents | `openclaw`, `opencode`, `codex`, `claude-code`, `hermes-agent`, `pi`, `omp` |
+| Meta | `all-agents` (unified 5-agent configurator with preset system) |
 | Ecosystem | `vibma` (Figma MCP bridge), `skills` (external skill collections) |
 
 ### Standalone Scripts
