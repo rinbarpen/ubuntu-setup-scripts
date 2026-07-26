@@ -12,12 +12,19 @@ import * as codex from './agents/codex'
 import * as hermesAgent from './agents/hermes-agent'
 import * as openclaw from './agents/openclaw'
 import * as paseo from './agents/paseo'
+import * as pi from './agents/pi'
+import * as omp from './agents/omp'
 import * as relay from './relay'
 import * as zerotier from './zerotier'
 import * as zellij from './zellij'
 import * as browsers from './browsers'
 import * as vms from './vms'
 import * as skills from './skills'
+import * as aris from './aris'
+import * as dockerConfig from './docker-config'
+import * as firecrawl from './firecrawl'
+import * as overleaf from './overleaf'
+import * as vibma from './vibma'
 
 interface ModuleExports {
   id: string
@@ -32,8 +39,9 @@ interface ModuleExports {
 
 const modules: ModuleExports[] = [
   ubuntuBase, languages, bun, shell, fisher, git,
-  opencode, claudeCode, codex, hermesAgent, openclaw, paseo,
+  opencode, claudeCode, codex, hermesAgent, openclaw, paseo, pi, omp,
   relay, zerotier, zellij, browsers, vms, skills,
+  aris, dockerConfig, firecrawl, overleaf, vibma,
 ]
 
 export function getAllModules(): ModuleDefinition[] {

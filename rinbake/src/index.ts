@@ -6,6 +6,10 @@ import { cmdConfigure } from './commands/configure'
 import { cmdKeys } from './commands/keys'
 import { cmdMcp } from './commands/mcp'
 import { cmdStatus } from './commands/status'
+import { cmdApiConfig } from './commands/api-config'
+import { cmdModelSwitch } from './commands/model-switch'
+import { cmdSshKey } from './commands/ssh-key'
+import { cmdCreateUser } from './commands/create-user'
 
 const help = `
 ${color.bold('rinbake')} — Ubuntu 开发环境一站式安装配置工具
@@ -22,6 +26,10 @@ ${color.underline('用法')}:
   ${color.cyan('rinbake mcp list')}               列出 MCP 服务器
   ${color.cyan('rinbake mcp install <name...>')}  启用 MCP 服务器
   ${color.cyan('rinbake status')}                 查看安装状态
+  ${color.cyan('rinbake api-config')}             API Key 交互式向导
+  ${color.cyan('rinbake model-switch')}           Claude Code 模型切换
+  ${color.cyan('rinbake ssh-key')}                SSH 密钥生成向导
+  ${color.cyan('rinbake create-user')}            Linux 用户创建
   ${color.cyan('rinbake help')}                   显示帮助
 
 ${color.dim('配置目录: ~/.config/rinbake/')}
@@ -54,6 +62,18 @@ async function main(): Promise<void> {
     case 'st':
     case 'doctor':
       await cmdStatus()
+      break
+    case 'api-config':
+      await cmdApiConfig(args.slice(1))
+      break
+    case 'model-switch':
+      await cmdModelSwitch(args.slice(1))
+      break
+    case 'ssh-key':
+      await cmdSshKey(args.slice(1))
+      break
+    case 'create-user':
+      await cmdCreateUser(args.slice(1))
       break
     case 'help':
     case '-h':
