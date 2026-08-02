@@ -32,6 +32,9 @@ rinbake 已通过模块注册表统一管理 Ubuntu 开发环境组件，并通�
 - `enabled = true`
 - `install()`、`configure()` 和 `detect()`
 
+`detect()` 的语义固定为“当前 PATH 中是否存在 `gh` 命令”，只表示安装状态，
+不表示 GitHub 是否已认证。
+
 在 `rinbake/src/modules/index.ts` 中导入并注册该模块。注册后，现有的
 `rinbake init`、`rinbake install` 和 `rinbake configure` 流程会自动发现它。
 
@@ -50,21 +53,27 @@ rinbake 已通过模块注册表统一管理 Ubuntu 开发环境组件，并通�
 `configure()` 不自行管理凭据，只调用 GitHub CLI 的认证命令：
 
 1. 如果 `gh` 未安装，输出提示并结束，不启动认证流程。
-2. 执行 `gh auth status` 检查当前认证状态。
-3. 如果已认证，显示状态并询问是否重新登录；默认不重新登录。
-4. 如果未认证，启动交互式 `gh auth login`，保留 GitHub CLI 原生的协议、浏览器和设备码选项。
-5. 登录返回后再次执行 `gh auth status` 验证；成功输出完成信息，失败输出警告。
-6. 在非 TTY 环境下不启动交互登录，只提示用户手动执行 `gh auth login`。
+2. 执行 `gh auth status --json hosts` 检查当前认证状态，不使用 `--show-token`。
+3. 解析 JSON 中 `hosts` 的认证条目：存在 `state = "success"` 的条目表示已认证；没有成功条目表示需要认证。
+4. 如果状态命令返回致命错误或 JSON 无法解析，输出错误并结束，不把异常误判为未认证。
+5. 如果已认证，显示 host/account 状态；TTY 环境下询问是否重新登录，默认不重新登录。非 TTY 环境直接保留现有状态。
+6. 如果未认证且有 TTY，启动交互式 `gh auth login`，保留 GitHub CLI 原生的协议、浏览器和设备码选项。
+7. 如果未认证且无 TTY，不启动交互登录，只提示用户手动执行 `gh auth login`。
+8. 登录返回后再次执行 JSON 状态检查；存在成功条目时输出完成信息，否则输出警告。
 
 认证状态、token 和 GitHub CLI 配置全部由 `gh` 按其默认机制管理，rinbake 不读写这些内容。
 
 ## 错误处理
 
 - apt 安装失败或安装后找不到 `gh`：抛出包含命令名的错误。
-- `gh auth status` 表示未认证：进入登录流程，而不是把状态误报为异常。
+- `gh auth status --json hosts` 没有成功认证条目：进入登录流程，而不是把状态误报为异常。
+- `gh auth status --json hosts` 返回非零、输出无法解析或缺少 `hosts` 字段：视为状态检查异常，输出原始错误摘要并结束，不启动登录。
 - 用户取消重新登录：保留已有认证状态并正常结束。
 - 登录失败或用户取消：输出警告，不写入 `installed.json` 以外的 rinbake 配置；安装成功仍可被记录为已安装。
 - 无 TTY：输出可复制的手动认证命令，不阻塞等待输入。
+
+`installed.json` 只由现有 `cmdInstall()` 在 `install()` 成功返回后维护；
+`configure()` 不写入或删除安装记录。
 
 ## 测试与验收
 
@@ -72,10 +81,17 @@ rinbake 已通过模块注册表统一管理 Ubuntu 开发环境组件，并通�
 
 - `github-cli` 已注册且模块 ID 唯一。
 - 模块元数据正确，包含 `configure` 函数。
-- `detect()` 返回布尔值。
+- `detect()` 返回布尔值，并明确表示命令安装状态而非认证状态。
+- 认证状态解析覆盖：成功认证、无成功条目、命令致命错误和无效 JSON。
+- 配置流程覆盖：已认证且保留、TTY 重新登录、未认证登录、非 TTY 提示手动登录。
+- 安装失败不会被标记为成功，配置失败不会改变 `installed.json`。
 - 模块注册测试仍通过全部现有模块。
 
 不在自动化测试中调用真实 apt、`gh auth login`、网络或用户认证文件。
+
+状态检查依赖 GitHub CLI 的机器可读 `gh auth status --json hosts` 输出；
+该命令在认证问题时仍返回 JSON，只有致命错误才通过非零退出码报告，避免将
+网络或 CLI 错误误判为“未登录”。
 
 验收命令：
 
@@ -91,4 +107,3 @@ bunx tsc --noEmit
 rinbake install github-cli
 rinbake configure github-cli
 ```
-
