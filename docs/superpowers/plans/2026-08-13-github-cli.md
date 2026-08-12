@@ -21,7 +21,7 @@
 
 ## 实现约定
 
-- `detect()` 只返回 `hasCommand('gh')`，不检查认证状态；导出的 `detectGithubCli(hasGh)` 纯粹转发命令检测结果，供测试证明认证状态不会影响 detect。
+- `detect()` 遵循现有 `ModuleDefinition.detect?: () => Promise<boolean>` 异步接口，只返回 `hasCommand('gh')`，不检查认证状态；导出的 `detectGithubCli(hasGh)` 纯粹转发异步命令检测结果，供测试证明认证状态不会影响 detect。
 - `install()` 先检查 `gh`；未安装时调用 `aptInstall('gh')`，若 apt 返回 `false` 或安装后仍检测不到 `gh`，抛出包含 `gh` 的错误。
 - 认证状态调用 `gh auth status --json hosts`，不传 `--show-token`。
 - 解析器要求顶层存在 `hosts`，并把 hosts 中任意 `state === 'success'` 的 entry 视为已认证；无成功 entry 视为未认证；无效 JSON、缺少 `hosts` 或致命非零命令退出视为状态检查错误。
@@ -52,7 +52,7 @@ test('github-cli is enabled and configurable', () => {
 
 - [ ] **Step 2: 添加认证 JSON 解析的失败测试**
 
-从模块导入 `parseAuthStatus` 和 `detectGithubCli`，覆盖解析器四个行为，并验证 `detectGithubCli(async () => true)` 与 `detectGithubCli(async () => false)` 分别返回 true/false，不依赖认证 JSON。
+从模块导入 `parseAuthStatus` 和 `detectGithubCli`，覆盖解析器四个行为，并验证 `await detectGithubCli(async () => true)` 与 `await detectGithubCli(async () => false)` 分别返回 true/false，不依赖认证 JSON。现有 `all modules are unique` 测试继续作为 `github-cli` 注册后的 ID 唯一性验收；另在本测试块断言 `getModule('github-cli')` 返回的 id 正确。
 
 ```ts
 test('parseAuthStatus recognizes a successful host entry', () => {
@@ -134,7 +134,7 @@ export function parseAuthStatus(stdout: string): AuthStatus
 interface GhResult { exitCode: number; stdout: string; stderr: string }
 interface GithubCliDeps {
   hasGh: () => Promise<boolean>
-  installGh: () => Promise<boolean>
+  installGh: (packageName: string) => Promise<boolean>
   runGh: (args: string[], interactive?: boolean) => Promise<GhResult>
   isTTY: () => boolean
   confirmRelogin: () => Promise<boolean | symbol>
@@ -144,7 +144,7 @@ interface GithubCliDeps {
 }
 ```
 
-默认实现绑定 `hasCommand('gh')`、`aptInstall('gh')`、现有 UI 函数和 `Boolean(process.stdin.isTTY)`。状态查询调用 `runGh(['auth', 'status', '--json', 'hosts'])` 并 pipe 输出；登录调用 `runGh(['auth', 'login'], true)` 并继承三路终端 I/O。默认 `confirmRelogin` 调用现有 `confirm`，消息明确询问是否重新登录且 `defaultValue: false`。进程启动/等待异常统一转成包含命令名的失败结果或错误，由上层状态机处理。
+默认实现绑定 `hasCommand('gh')`、`aptInstall(packageName)`、现有 UI 函数和 `Boolean(process.stdin.isTTY)`；安装流程必须调用 `installGh('gh')`，测试断言传入包名精确为 `gh`。状态查询调用 `runGh(['auth', 'status', '--json', 'hosts'])` 并 pipe 输出；登录调用 `runGh(['auth', 'login'], true)` 并继承三路终端 I/O。默认 `confirmRelogin` 调用现有 `confirm`，消息明确询问是否重新登录且 `defaultValue: false`。进程启动/等待异常统一转成包含命令名的失败结果或错误，由上层状态机处理。
 
 为测试导出 `installGithubCli(deps)` 与 `configureGithubCli(deps)`；测试通过注入的 `runGh(args, interactive)` 直接断言命令参数和交互标志。模块导出的 `install()`、`configure()` 调用默认依赖版本。测试桩只能通过参数注入，不使用全局 monkey patch。
 
@@ -160,7 +160,7 @@ export const category = 'system' as const
 export const enabled = true
 ```
 
-`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh()`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detectGithubCli()` 直接转发注入的 `hasGh()` 结果；模块 `detect()` 通过 `detectGithubCli(() => hasCommand('gh'))` 实现，认证 JSON 不参与检测。
+`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh('gh')`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detectGithubCli()` 直接转发注入的 `hasGh()` 结果；模块 `detect()` 通过 `detectGithubCli(() => hasCommand('gh'))` 实现，认证 JSON 不参与检测。
 
 - [ ] **Step 4: 实现配置状态机**
 
