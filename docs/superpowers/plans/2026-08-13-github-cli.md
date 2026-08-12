@@ -21,7 +21,7 @@
 
 ## 实现约定
 
-- `detect()` 只返回 `hasCommand('gh')`，不检查认证状态。
+- `detect()` 只返回 `hasCommand('gh')`，不检查认证状态；导出的 `detectGithubCli(hasGh)` 纯粹转发命令检测结果，供测试证明认证状态不会影响 detect。
 - `install()` 先检查 `gh`；未安装时调用 `aptInstall('gh')`，若 apt 返回 `false` 或安装后仍检测不到 `gh`，抛出包含 `gh` 的错误。
 - 认证状态调用 `gh auth status --json hosts`，不传 `--show-token`。
 - 解析器要求顶层存在 `hosts`，并把 hosts 中任意 `state === 'success'` 的 entry 视为已认证；无成功 entry 视为未认证；无效 JSON、缺少 `hosts` 或致命非零命令退出视为状态检查错误。
@@ -52,11 +52,11 @@ test('github-cli is enabled and configurable', () => {
 
 - [ ] **Step 2: 添加认证 JSON 解析的失败测试**
 
-从模块导入 `parseAuthStatus`，覆盖四个行为：
+从模块导入 `parseAuthStatus` 和 `detectGithubCli`，覆盖解析器四个行为，并验证 `detectGithubCli(async () => true)` 与 `detectGithubCli(async () => false)` 分别返回 true/false，不依赖认证 JSON。
 
 ```ts
 test('parseAuthStatus recognizes a successful host entry', () => {
-  expect(parseAuthStatus(JSON.stringify({ hosts: { 'github.com': [{ state: 'success', login: 'ROLE' }] } }))).toEqual({
+  expect(parseAuthStatus(JSON.stringify({ hosts: { 'github.com': [{ state: 'success', host: 'github.com', login: 'ROLE', token: 'TOKEN' }] } }))).toEqual({
     authenticated: true,
     entries: [{ host: 'github.com', login: 'ROLE', state: 'success' }],
   })
@@ -81,9 +81,9 @@ test('parseAuthStatus rejects malformed or incomplete output', () => {
 
 使用可注入安装入口覆盖：已安装跳过 apt；apt 返回 `false`；apt 抛异常；apt 成功但安装后仍不可检测；apt 成功且安装后检测成功。断言 apt 调用次数、错误包含 `gh`，以及成功分支返回。
 
-使用依赖注入覆盖：未安装只提示且不调用 status/login；status 非零或抛异常不登录；无效 JSON 不登录；已认证 TTY 下使用默认值 `false` 且不登录；已认证确认 `true` 时调用 `runGh(['auth', 'login'], true)`；未认证 TTY 登录并复查；未认证非 TTY 输出 `gh auth login` 提示且不登录；登录非零输出警告；登录后复查失败输出警告。
+使用依赖注入覆盖：未安装只提示且不调用 status/login；status 非零或抛异常不登录；无效 JSON 不登录；已认证 TTY 下使用默认值 `false` 且不登录；已认证 TTY 下 confirm 返回取消 `symbol` 且不登录；已认证确认 `true` 时调用 `runGh(['auth', 'login'], true)`；未认证 TTY 登录并复查；未认证非 TTY 输出 `gh auth login` 提示且不登录；登录非零输出警告；登录后复查失败输出警告。
 
-状态 fixture 只包含 `hosts` 的 `state`、`host`、`login` 字段。断言日志不包含原始 JSON 或 token 字段。另增加：配置失败前后 `readInstalled()` 结果相同，证明配置流程不维护 `installed.json`。
+状态 fixture 至少包含一个额外的 `token: 'TOKEN'` 哨兵字段，且使用 `hosts` 映射键 `github.com` 与 entry 中显式 `host: 'github.com'` 的完整形态；另测试缺失 login 时归一化为空字符串。断言日志不包含原始 JSON 或 `TOKEN` 字段。另增加：配置失败前后 `readInstalled()` 结果相同，证明配置流程不维护 `installed.json`。
 
 - [ ] **Step 4: 运行失败测试确认 RED**
 
@@ -120,10 +120,11 @@ export interface AuthStatus {
   entries: AuthStatusEntry[]
 }
 
+export async function detectGithubCli(hasGh: () => Promise<boolean>): Promise<boolean>
 export function parseAuthStatus(stdout: string): AuthStatus
 ```
 
-`JSON.parse` 失败、顶层 `hosts` 缺失/非对象、host value 不是数组或 entry 不是对象时抛出带 `gh auth status` 上下文的错误。只读取 `host`、`login`、`state`，遍历所有 host entry；任一 state 为 `success` 则 authenticated 为 true。不得读取或打印 token。
+`JSON.parse` 失败、顶层 `hosts` 缺失/为 null/数组/非对象、host value 不是数组或 entry 为 null/数组/非对象时抛出带 `gh auth status` 上下文的错误。对每个 host map entry：优先使用 entry.host 的字符串值，否则使用 map key 作为 host；login 缺失或非字符串时归一化为 `''`；state 必须是字符串，否则抛错。遍历所有 host entry；任一 state 为 `success` 则 authenticated 为 true。不得读取或打印 token。
 
 - [ ] **Step 2: 实现可注入的命令和 UI 依赖**
 
@@ -159,7 +160,7 @@ export const category = 'system' as const
 export const enabled = true
 ```
 
-`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh()`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detect()` 直接返回 `hasCommand('gh')`。
+`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh()`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detectGithubCli()` 直接转发注入的 `hasGh()` 结果；模块 `detect()` 通过 `detectGithubCli(() => hasCommand('gh'))` 实现，认证 JSON 不参与检测。
 
 - [ ] **Step 4: 实现配置状态机**
 
@@ -168,7 +169,7 @@ export const enabled = true
 1. `hasGh()` 为 false：输出安装提示并返回。
 2. 执行 `runGh(['auth', 'status', '--json', 'hosts'])`；非零退出或执行抛错只输出状态检查错误并返回，不登录。
 3. 调用 `parseAuthStatus()`；解析异常只输出错误并返回，不登录。
-4. 已认证时输出格式化的 host/login/state 摘要，不输出原始 JSON。TTY 下调用 `confirmRelogin()`，默认值由默认依赖固定为 `false`；只有严格返回 `true` 才登录。非 TTY 直接保留现状。
+4. 已认证时输出格式化的 host/login/state 摘要，不输出原始 JSON、token 字段或 token 值。TTY 下调用 `confirmRelogin()`，默认值由默认依赖固定为 `false`；只有严格返回 `true` 才登录。非 TTY 直接保留现状。
 5. 未认证时，TTY 调用 `runGh(['auth', 'login'], true)`；非 TTY 输出手动 `gh auth login` 提示并返回。
 6. 登录退出码为 0 时再次执行 `runGh(['auth', 'status', '--json', 'hosts'])` 并解析；存在成功 entry 输出完成日志，否则输出警告。复查异常、非零或无效 JSON 都只输出警告并返回。
 7. 登录退出码非 0 或抛错时输出警告并返回，不更新 `installed.json`。
