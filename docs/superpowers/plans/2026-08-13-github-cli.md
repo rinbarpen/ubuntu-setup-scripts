@@ -33,7 +33,6 @@
 
 **Files:**
 - Modify: `rinbake/test/modules.test.ts`
-- Create: `rinbake/src/modules/system/github-cli.ts`（仅添加满足 import 的最小导出骨架，随后在 Task 2 完成）
 
 - [ ] **Step 1: 添加模块注册失败测试**
 
@@ -59,12 +58,14 @@ test('github-cli is enabled and configurable', () => {
 test('parseAuthStatus recognizes a successful host entry', () => {
   expect(parseAuthStatus(JSON.stringify({ hosts: { 'github.com': [{ state: 'success', login: 'ROLE' }] } }))).toEqual({
     authenticated: true,
+    entries: [{ host: 'github.com', login: 'ROLE', state: 'success' }],
   })
 })
 
 test('parseAuthStatus treats hosts without success as unauthenticated', () => {
   expect(parseAuthStatus(JSON.stringify({ hosts: { 'github.com': [{ state: 'error' }] } }))).toEqual({
     authenticated: false,
+    entries: [{ host: 'github.com', login: '', state: 'error' }],
   })
 })
 
@@ -76,60 +77,64 @@ test('parseAuthStatus rejects malformed or incomplete output', () => {
 
 预期此时测试失败，原因是模块与解析器尚未实现，而不是测试语法错误。
 
-- [ ] **Step 3: 运行失败测试确认 RED**
+- [ ] **Step 3: 添加安装和配置状态机失败测试**
+
+使用可注入安装入口覆盖：已安装跳过 apt；apt 返回 `false`；apt 抛异常；apt 成功但安装后仍不可检测；apt 成功且安装后检测成功。断言 apt 调用次数、错误包含 `gh`，以及成功分支返回。
+
+使用依赖注入覆盖：未安装只提示且不调用 status/login；status 非零或抛异常不登录；无效 JSON 不登录；已认证 TTY 下使用默认值 `false` 且不登录；已认证确认 `true` 时调用 `runGh(['auth', 'login'], true)`；未认证 TTY 登录并复查；未认证非 TTY 输出 `gh auth login` 提示且不登录；登录非零输出警告；登录后复查失败输出警告。
+
+状态 fixture 只包含 `hosts` 的 `state`、`host`、`login` 字段。断言日志不包含原始 JSON 或 token 字段。另增加：配置失败前后 `readInstalled()` 结果相同，证明配置流程不维护 `installed.json`。
+
+- [ ] **Step 4: 运行失败测试确认 RED**
 
 Run: `cd rinbake && bun test test/modules.test.ts`
 
-Expected: FAIL，失败集中在 `github-cli` 未注册或 `parseAuthStatus` 未定义。
+Expected: FAIL，失败集中在 `github-cli` 未注册、解析器未定义或安装/认证依赖入口未实现。
 
-- [ ] **Step 4: Commit 测试基线**
+- [ ] **Step 5: Commit 测试基线**
 
 ```bash
 git add rinbake/test/modules.test.ts
 git commit -m "test: define GitHub CLI module and auth parsing behavior"
 ```
 
-## Task 2: 实现 GitHub CLI 模块和认证依赖边界
+## Task 2: 实现模块、安装和认证状态机（GREEN）
 
 **Files:**
 - Create: `rinbake/src/modules/system/github-cli.ts`
 - Modify: `rinbake/src/modules/index.ts`
 
-- [ ] **Step 1: 实现纯认证状态解析器**
+- [ ] **Step 1: 实现认证状态模型和解析器**
 
-在 `github-cli.ts` 中定义并导出：
+定义并导出：
 
 ```ts
+export interface AuthStatusEntry {
+  host: string
+  login: string
+  state: string
+}
+
 export interface AuthStatus {
   authenticated: boolean
+  entries: AuthStatusEntry[]
 }
 
 export function parseAuthStatus(stdout: string): AuthStatus
 ```
 
-实现要求：
+`JSON.parse` 失败、顶层 `hosts` 缺失/非对象、host value 不是数组或 entry 不是对象时抛出带 `gh auth status` 上下文的错误。只读取 `host`、`login`、`state`，遍历所有 host entry；任一 state 为 `success` 则 authenticated 为 true。不得读取或打印 token。
 
-- `JSON.parse` 失败时抛出带有 `gh auth status` 上下文的错误。
-- 顶层 `hosts` 缺失、不是对象或条目不是数组时抛出错误。
-- 遍历所有 host entry，只要 entry 的 `state` 精确等于 `success` 就返回 `{ authenticated: true }`。
-- 没有成功 entry 时返回 `{ authenticated: false }`。
-- 只读取状态字段，不读取或打印 token 字段。
+- [ ] **Step 2: 实现可注入的命令和 UI 依赖**
 
-- [ ] **Step 2: 实现可注入的命令执行适配器**
-
-定义模块内部使用的依赖类型，至少包括：
+定义内部依赖类型：
 
 ```ts
-interface GhResult {
-  exitCode: number
-  stdout: string
-  stderr: string
-}
-
+interface GhResult { exitCode: number; stdout: string; stderr: string }
 interface GithubCliDeps {
   hasGh: () => Promise<boolean>
-  runStatus: () => Promise<GhResult>
-  runLogin: () => Promise<GhResult>
+  installGh: () => Promise<boolean>
+  runGh: (args: string[], interactive?: boolean) => Promise<GhResult>
   isTTY: () => boolean
   confirmRelogin: () => Promise<boolean | symbol>
   logInfo: (message: string) => void
@@ -138,19 +143,13 @@ interface GithubCliDeps {
 }
 ```
 
-默认依赖要求：
+默认实现绑定 `hasCommand('gh')`、`aptInstall('gh')`、现有 UI 函数和 `Boolean(process.stdin.isTTY)`。状态查询调用 `runGh(['auth', 'status', '--json', 'hosts'])` 并 pipe 输出；登录调用 `runGh(['auth', 'login'], true)` 并继承三路终端 I/O。默认 `confirmRelogin` 调用现有 `confirm`，消息明确询问是否重新登录且 `defaultValue: false`。进程启动/等待异常统一转成包含命令名的失败结果或错误，由上层状态机处理。
 
-- `hasGh` 调用现有 `hasCommand('gh')`。
-- `runStatus` 启动 `gh auth status --json hosts`，pipe 捕获 stdout/stderr。
-- `runLogin` 启动 `gh auth login`，stdin/stdout/stderr 继承当前终端，等待退出后返回退出码。
-- `isTTY` 返回 `Boolean(process.stdin.isTTY)`。
-- prompt 和日志分别绑定现有 `confirm`、`logInfo`、`logStep`、`logWarn`。
-
-为测试暴露一个接受依赖的配置入口，例如 `configureGithubCli(deps = defaultDeps)`；模块导出的 `configure()` 只调用默认依赖版本。不要把测试桩写入生产全局状态。
+为测试导出 `installGithubCli(deps)` 与 `configureGithubCli(deps)`；测试通过注入的 `runGh(args, interactive)` 直接断言命令参数和交互标志。模块导出的 `install()`、`configure()` 调用默认依赖版本。测试桩只能通过参数注入，不使用全局 monkey patch。
 
 - [ ] **Step 3: 实现安装和检测**
 
-实现标准模块字段：
+实现标准字段：
 
 ```ts
 export const id = 'github-cli'
@@ -160,116 +159,46 @@ export const category = 'system' as const
 export const enabled = true
 ```
 
-`install()` 行为：
-
-1. 已有 `gh` 时输出已安装日志并返回。
-2. 未安装时调用 `aptInstall('gh')`。
-3. apt 返回失败时抛出 `gh 安装失败` 类错误。
-4. apt 成功后再次检查 `hasCommand('gh')`；检查失败时抛出 `gh 安装后未找到` 类错误。
-5. 成功时输出完成日志。
-
-`detect()` 直接返回 `hasCommand('gh')`。
+`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh()`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detect()` 直接返回 `hasCommand('gh')`。
 
 - [ ] **Step 4: 实现配置状态机**
 
-`configureGithubCli()` 按以下顺序执行：
+`configureGithubCli()` 顺序固定为：
 
-1. `hasGh()` 为 false：输出先安装提示并返回。
-2. 执行 `runStatus()`；非零退出码直接输出错误并返回，不执行登录。
-3. 解析 stdout；解析失败直接输出错误并返回，不执行登录。
-4. 已认证：输出 status stdout；TTY 下调用 `confirmRelogin()`，仅返回严格 `true` 时调用 `runLogin()`；其他结果保留现状并返回。非 TTY 直接返回。
-5. 未认证：TTY 下调用 `runLogin()`；非 TTY 输出手动命令提示并返回。
-6. 登录退出码为 0 时再次执行 status，按同样的非零/解析失败/成功规则验证；验证成功输出完成日志，验证失败输出警告。
-7. 登录退出码非 0 时输出警告，不抛出认证流程异常，不修改安装记录。
+1. `hasGh()` 为 false：输出安装提示并返回。
+2. 执行 `runGh(['auth', 'status', '--json', 'hosts'])`；非零退出或执行抛错只输出状态检查错误并返回，不登录。
+3. 调用 `parseAuthStatus()`；解析异常只输出错误并返回，不登录。
+4. 已认证时输出格式化的 host/login/state 摘要，不输出原始 JSON。TTY 下调用 `confirmRelogin()`，默认值由默认依赖固定为 `false`；只有严格返回 `true` 才登录。非 TTY 直接保留现状。
+5. 未认证时，TTY 调用 `runGh(['auth', 'login'], true)`；非 TTY 输出手动 `gh auth login` 提示并返回。
+6. 登录退出码为 0 时再次执行 `runGh(['auth', 'status', '--json', 'hosts'])` 并解析；存在成功 entry 输出完成日志，否则输出警告。复查异常、非零或无效 JSON 都只输出警告并返回。
+7. 登录退出码非 0 或抛错时输出警告并返回，不更新 `installed.json`。
 
-状态命令失败时将 stderr/stdout 截断为可读摘要用于日志，避免把超长命令输出直接写入终端；不要通过 `gh auth status --show-token` 或 `gh auth token` 获取信息。
+所有日志均使用固定上下文或脱敏状态摘要，不直接拼接原始 stdout/stderr；错误摘要限制长度且不使用 token 命令。
 
 - [ ] **Step 5: 注册模块**
 
-在 `rinbake/src/modules/index.ts`：
+在 `rinbake/src/modules/index.ts` 导入：
 
 ```ts
 import * as githubCli from './system/github-cli'
 ```
 
-并将 `githubCli` 放入 `modules` 数组的 system 模块区域，保持 `getAllModules()`、`getModule()` 自动可见。
+并将 `githubCli` 放入 system 模块数组。
 
-- [ ] **Step 6: 运行 Task 1 测试确认 GREEN**
+- [ ] **Step 6: 运行 GREEN 测试**
 
 Run: `cd rinbake && bun test test/modules.test.ts`
 
-Expected: 所有模块注册和认证解析测试 PASS；若失败，修正实现而不是放宽断言。
+Expected: 所有模块、解析器、安装和认证状态机测试 PASS，不访问网络、不启动真实登录。
 
-- [ ] **Step 7: Commit 模块实现**
+- [ ] **Step 7: 提交模块实现**
 
 ```bash
 git add rinbake/src/modules/system/github-cli.ts rinbake/src/modules/index.ts rinbake/test/modules.test.ts
 git commit -m "feat: add GitHub CLI install and auth module"
 ```
 
-## Task 3: 为安装和配置核心分支补充 TDD 测试
-
-**Files:**
-- Modify: `rinbake/test/modules.test.ts`
-- Modify: `rinbake/src/modules/system/github-cli.ts`（仅在测试暴露出设计缺口时调整依赖边界）
-
-- [ ] **Step 1: 添加安装分支测试**
-
-将安装逻辑抽成可注入函数或依赖，使测试不调用真实 apt。覆盖：
-
-- `hasGh()` 初始为 true：不调用 apt，返回成功。
-- `hasGh()` 初始为 false 且 apt 返回 false：抛出包含 `gh` 的错误。
-- apt 返回 true 但安装后 `hasGh()` 仍为 false：抛出包含 `gh` 的错误。
-- apt 返回 true 且安装后检测为 true：返回成功。
-
-先运行：`cd rinbake && bun test test/modules.test.ts`
-
-Expected: 新增分支测试在实现注入入口前 FAIL。
-
-- [ ] **Step 2: 实现最小安装依赖入口并使测试通过**
-
-保留导出的模块 `install()` 默认行为不变；仅将 `hasCommand` 和 `aptInstall` 作为可替换依赖传入内部 `installGithubCli()`，让单元测试可以控制调用结果和验证 apt 调用次数。
-
-Run: `cd rinbake && bun test test/modules.test.ts`
-
-Expected: 安装分支测试 PASS，现有测试仍 PASS。
-
-- [ ] **Step 3: 添加配置状态机测试**
-
-使用依赖注入覆盖：
-
-- 未安装：只输出安装提示，不调用 status/login。
-- status 非零：输出错误，不调用 login。
-- status 无效 JSON：输出错误，不调用 login。
-- 已认证 + TTY + 确认 false：不登录。
-- 已认证 + TTY + 确认 true：登录后复查 status。
-- 未认证 + TTY：调用 login，登录成功后复查 status。
-- 未认证 + 非 TTY：不登录，输出 `gh auth login` 提示。
-- 登录非零：输出警告，不抛出并结束。
-- 登录后复查失败：输出警告。
-
-状态 JSON 固定使用不含 token 的 `hosts` fixtures；断言命令参数/runner 调用次数和日志结果，不断言真实 GitHub 输出。
-
-先运行：`cd rinbake && bun test test/modules.test.ts`
-
-Expected: 新增状态机测试在实现完整分支前 FAIL。
-
-- [ ] **Step 4: 完成最小状态机实现并验证 GREEN**
-
-只实现设计文档规定的分支，不增加 token 输入、GitHub API、repo 操作或顶层命令。
-
-Run: `cd rinbake && bun test test/modules.test.ts`
-
-Expected: 所有单元测试 PASS。
-
-- [ ] **Step 5: Commit 核心分支测试**
-
-```bash
-git add rinbake/test/modules.test.ts rinbake/src/modules/system/github-cli.ts
-git commit -m "test: cover GitHub CLI install and auth branches"
-```
-
-## Task 4: 更新用户文档
+## Task 3: 更新用户文档
 
 **Files:**
 - Modify: `README.md`
@@ -284,16 +213,16 @@ git commit -m "test: cover GitHub CLI install and auth branches"
 
 - [ ] **Step 2: 补充 rinbake 使用示例**
 
-在 rinbake 命令表附近增加说明：
+在 rinbake 命令说明附近增加：
 
 ```bash
 rinbake install github-cli
 rinbake configure github-cli
 ```
 
-并说明 `configure` 会调用 GitHub CLI 原生认证流程，认证信息由 `gh` 管理。
+说明 `configure` 调用 GitHub CLI 原生认证流程，认证信息由 `gh` 管理。
 
-- [ ] **Step 3: 检查文档 diff 并提交**
+- [ ] **Step 3: 检查并提交文档**
 
 Run: `git diff --check`
 
@@ -304,7 +233,7 @@ git add README.md
 git commit -m "docs: document GitHub CLI module"
 ```
 
-## Task 5: 全量验证与交付检查
+## Task 4: 全量验证与交付检查
 
 **Files:**
 - No new files; validate all changed files.
