@@ -48,7 +48,7 @@ test('github-cli is enabled and configurable', () => {
 })
 ```
 
-同时在 `module detect functions` 测试中保留统一的 boolean 断言；后续增加对纯解析器的独立测试。
+同时在 `module detect functions` 测试中对每个检测器使用 `const result = await m.detect()` 后再断言 `typeof result === 'boolean'`；后续增加对纯解析器的独立测试。
 
 - [ ] **Step 2: 添加认证 JSON 解析的失败测试**
 
@@ -160,7 +160,7 @@ export const category = 'system' as const
 export const enabled = true
 ```
 
-`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh('gh')`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detectGithubCli()` 直接转发注入的 `hasGh()` 结果；模块 `detect()` 通过 `detectGithubCli(() => hasCommand('gh'))` 实现，认证 JSON 不参与检测。
+`installGithubCli()`：已检测到 `gh` 时输出已安装日志并返回；否则执行 `installGh('gh')`，若返回 false 或抛异常则抛出包含 `gh` 的错误；安装成功后再次调用 `hasGh()`，失败则抛出安装后未找到错误；成功输出完成日志。`detectGithubCli()` 接收并转发 `() => Promise<boolean>`；模块 `detect()` 通过 `detectGithubCli(() => hasCommand('gh'))` 实现，`hasCommand('gh')` 本身返回 Promise，认证 JSON 不参与检测。
 
 - [ ] **Step 4: 实现配置状态机**
 
