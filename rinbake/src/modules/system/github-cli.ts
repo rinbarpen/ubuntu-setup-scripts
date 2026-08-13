@@ -89,9 +89,9 @@ export async function detectGithubCli(hasGh: () => Promise<boolean>): Promise<bo
 
 export function sanitizeDiagnostic(value: string): string {
   return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
     .replace(/\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_-]+\b/gi, '[redacted]')
     .replace(/((?:["']?(?:access[_-]?token|oauth[_-]?token|refresh[_-]?token|token|secret|password|authorization)["']?)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[redacted]')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
     .replace(/\bTOKEN\b/gi, '[redacted]')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\s+/g, ' ')

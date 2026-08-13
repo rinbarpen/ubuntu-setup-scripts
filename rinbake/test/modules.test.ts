@@ -8,6 +8,7 @@ import { getMcpServers, getAllMcpIds, getMcpDef } from '../src/modules/mcp'
 import { getKey, setKey, listKeys } from '../src/config/keys'
 import {
   parseAuthStatus,
+  sanitizeDiagnostic,
   detectGithubCli,
   installGithubCli,
   configureGithubCli,
@@ -188,6 +189,15 @@ describe('module detect functions', () => {
 })
 
 describe('GitHub CLI auth status parsing', () => {
+  test('sanitizes Bearer diagnostics before key-value redaction', () => {
+    const sanitized = sanitizeDiagnostic('Authorization: Bearer SECRET_VALUE TOKEN')
+
+    expect(sanitized).not.toContain('SECRET_VALUE')
+    expect(sanitized).not.toContain('TOKEN')
+    expect(sanitized.toLowerCase()).toContain('authorization')
+    expect(sanitized).toContain('[redacted]')
+  })
+
   test('parses a successful GitHub auth entry without exposing its token', () => {
     expect(parseAuthStatus(authenticatedStatus)).toEqual({
       authenticated: true,
