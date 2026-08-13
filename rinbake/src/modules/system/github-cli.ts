@@ -112,8 +112,21 @@ function errorDiagnostic(error: unknown): string {
   return diagnosticOrFallback(message, 'exception')
 }
 
+function diagnosticCandidate(value: string): string {
+  const sanitized = sanitizeDiagnostic(value)
+  return /^\[redacted\](?:\s+\[redacted\])*$/.test(sanitized) || /^Bearer \[redacted\]$/.test(sanitized)
+    ? ''
+    : sanitized
+}
+
 function resultDiagnostic(result: GhResult): string {
-  return diagnosticOrFallback(result.stderr || result.stdout, `exit code ${result.exitCode}`)
+  const stderr = diagnosticCandidate(result.stderr)
+  if (stderr) return stderr
+
+  const stdout = diagnosticCandidate(result.stdout)
+  if (stdout) return stdout
+
+  return `exit code ${result.exitCode}`
 }
 
 function authSummary(status: AuthStatus): string {

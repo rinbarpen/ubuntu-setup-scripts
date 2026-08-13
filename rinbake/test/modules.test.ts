@@ -320,6 +320,16 @@ describe('GitHub CLI authentication configuration', () => {
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
 
+  test('uses sanitized stdout when stderr is only whitespace', async () => {
+    const fixture = configureFixture({
+      statuses: [ghResult('useful failure TOKEN', 7, ' \n\t')],
+    })
+    await configureGithubCli(fixture.deps)
+
+    expect(fixtureOutput(fixture)).toContain('useful failure')
+    expect(fixtureOutput(fixture)).not.toContain('TOKEN')
+  })
+
   test('does not log in when auth status throws', async () => {
     const fixture = configureFixture({ statuses: [new Error('gh auth status failed TOKEN')] })
     await configureGithubCli(fixture.deps)
