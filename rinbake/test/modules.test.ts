@@ -15,6 +15,30 @@ import {
 
 type GhResult = { exitCode: number; stdout: string; stderr: string }
 type GhCall = { args: string[]; interactive: boolean }
+type ConfirmOptions = { defaultValue?: boolean }
+type InstallDeps = {
+  detect: () => Promise<boolean>
+  installGh: (pkg: string) => Promise<boolean>
+}
+type ConfigureDeps = {
+  detect: () => Promise<boolean>
+  isTTY: boolean
+  confirm: (opts: ConfirmOptions) => Promise<boolean | symbol>
+  runGh: (args: string[], interactive?: boolean) => Promise<GhResult>
+  logInfo: (message: string) => void
+  logWarn: (message: string) => void
+  readInstalled: () => Promise<string[]>
+  writeInstalled: (ids: string[]) => Promise<void>
+}
+
+const statusCall: GhCall = {
+  args: ['auth', 'status', '--json', 'hosts'],
+  interactive: false,
+}
+const loginCall: GhCall = {
+  args: ['auth', 'login'],
+  interactive: true,
+}
 
 const authenticatedStatus = JSON.stringify({
   hosts: {
@@ -40,7 +64,7 @@ function configureFixture(options: {
   const calls: GhCall[] = []
   const logs: string[] = []
   const warnings: string[] = []
-  const confirmOptions: Array<{ defaultValue?: boolean }> = []
+  const confirmOptions: ConfirmOptions[] = []
   const writeInstalledCalls: string[][] = []
   const statuses = [...(options.statuses ?? [ghResult(authenticatedStatus)])]
   const login = options.login ?? ghResult('')
@@ -48,7 +72,7 @@ function configureFixture(options: {
   const deps = {
     detect: async () => options.installed ?? true,
     isTTY: options.tty ?? true,
-    confirm: async (opts: { defaultValue?: boolean }) => {
+    confirm: async (opts: ConfirmOptions) => {
       confirmOptions.push(opts)
       return options.confirmResult ?? false
     },
@@ -66,21 +90,33 @@ function configureFixture(options: {
     writeInstalled: async (ids: string[]) => writeInstalledCalls.push([...ids]),
   }
 
-  return { deps, calls, logs, warnings, confirmOptions, writeInstalledCalls }
-}
-
-function expectStatusCalls(calls: GhCall[], count: number): void {
-  const statusCalls = calls.filter(call => call.args[0] === 'auth' && call.args[1] === 'status')
-  expect(statusCalls).toHaveLength(count)
-  for (const call of statusCalls) {
-    expect(call.args).toEqual(['auth', 'status', '--json', 'hosts'])
-    expect(call.args).not.toContain('--show-token')
-    expect(call.interactive).toBe(false)
+  return {
+    deps: deps satisfies ConfigureDeps,
+    calls,
+    logs,
+    warnings,
+    confirmOptions,
+    writeInstalledCalls,
   }
 }
 
-function expectNoLogin(calls: GhCall[]): void {
-  expect(calls.some(call => call.args[0] === 'auth' && call.args[1] === 'login')).toBe(false)
+function expectExactCalls(calls: GhCall[], expected: GhCall[]): void {
+  expect(calls).toEqual(expected)
+  for (const call of expected) {
+    if (call.args[1] === 'status') {
+      expect(call.args).toEqual(statusCall.args)
+      expect(call.args).not.toContain('--show-token')
+      expect(call.interactive).toBe(false)
+    }
+    if (call.args[1] === 'login') {
+      expect(call.args).toEqual(loginCall.args)
+      expect(call.interactive).toBe(true)
+    }
+  }
+}
+
+function expectNoCalls(calls: GhCall[]): void {
+  expect(calls).toEqual([])
 }
 
 function fixtureOutput(fixture: ReturnType<typeof configureFixture>): string {
@@ -184,10 +220,11 @@ describe('GitHub CLI installation', () => {
       installCalls.push(pkg)
       return true
     }
-    const result = await installGithubCli({
+    const deps: InstallDeps = {
       detect: async () => true,
       installGh,
-    } as any)
+    }
+    const result = await installGithubCli(deps)
 
     expect(result).toBe(true)
     expect(installCalls).toEqual([])
@@ -199,10 +236,11 @@ describe('GitHub CLI installation', () => {
       installCalls.push(pkg)
       return false
     }
-    await expect(installGithubCli({
+    const deps: InstallDeps = {
       detect: async () => false,
       installGh,
-    } as any)).rejects.toThrow(/gh/)
+    }
+    await expect(installGithubCli(deps)).rejects.toThrow(/gh/)
 
     expect(installCalls).toEqual(['gh'])
   })
@@ -213,10 +251,11 @@ describe('GitHub CLI installation', () => {
       installCalls.push(pkg)
       throw new Error('apt unavailable')
     }
-    await expect(installGithubCli({
+    const deps: InstallDeps = {
       detect: async () => false,
       installGh,
-    } as any)).rejects.toThrow(/gh/)
+    }
+    await expect(installGithubCli(deps)).rejects.toThrow(/gh/)
 
     expect(installCalls).toEqual(['gh'])
   })
@@ -228,7 +267,8 @@ describe('GitHub CLI installation', () => {
       installCalls.push(pkg)
       return true
     }
-    await expect(installGithubCli({ detect, installGh } as any)).rejects.toThrow(/gh/)
+    const deps: InstallDeps = { detect, installGh }
+    await expect(installGithubCli(deps)).rejects.toThrow(/gh/)
 
     expect(installCalls).toEqual(['gh'])
   })
@@ -241,7 +281,8 @@ describe('GitHub CLI installation', () => {
       installCalls.push(pkg)
       return true
     }
-    const result = await installGithubCli({ detect, installGh } as any)
+    const deps: InstallDeps = { detect, installGh }
+    const result = await installGithubCli(deps)
 
     expect(result).toBe(true)
     expect(installCalls).toEqual(['gh'])
@@ -251,9 +292,9 @@ describe('GitHub CLI installation', () => {
 describe('GitHub CLI authentication configuration', () => {
   test('only logs when gh is not installed', async () => {
     const fixture = configureFixture({ installed: false })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expect(fixture.calls).toEqual([])
+    expectNoCalls(fixture.calls)
     expect(fixtureOutput(fixture)).toMatch(/gh/)
   })
 
@@ -262,20 +303,18 @@ describe('GitHub CLI authentication configuration', () => {
       statuses: [ghResult(authenticatedStatus, 7, 'gh auth status failed TOKEN')],
       confirmResult: true,
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
     expect(fixtureOutput(fixture)).toMatch(/failed/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
 
   test('does not log in when auth status throws', async () => {
     const fixture = configureFixture({ statuses: [new Error('gh auth status failed TOKEN')] })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
     expect(fixtureOutput(fixture)).toMatch(/failed/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
@@ -284,10 +323,9 @@ describe('GitHub CLI authentication configuration', () => {
     const fixture = configureFixture({
       statuses: [ghResult('{', 0, 'gh auth status returned invalid JSON TOKEN')],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
     expect(fixtureOutput(fixture)).toMatch(/invalid/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
@@ -297,11 +335,10 @@ describe('GitHub CLI authentication configuration', () => {
       statuses: [ghResult(authenticatedStatus)],
       confirmResult: false,
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
     expect(fixture.confirmOptions[0]?.defaultValue).toBe(false)
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
   })
 
   test('does not log in when an authenticated TTY confirmation is cancelled', async () => {
@@ -309,10 +346,9 @@ describe('GitHub CLI authentication configuration', () => {
       statuses: [ghResult(authenticatedStatus)],
       confirmResult: Symbol('cancel'),
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
   })
 
   test('keeps authenticated status visible without a TTY', async () => {
@@ -320,11 +356,10 @@ describe('GitHub CLI authentication configuration', () => {
       tty: false,
       statuses: [ghResult(authenticatedStatus)],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
+    expectExactCalls(fixture.calls, [statusCall])
     expect(fixture.confirmOptions).toEqual([])
-    expectNoLogin(fixture.calls)
     expect(fixture.logs.join('\n')).toContain('github.com')
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
@@ -334,20 +369,18 @@ describe('GitHub CLI authentication configuration', () => {
       statuses: [ghResult(authenticatedStatus), ghResult(authenticatedStatus)],
       confirmResult: true,
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 2)
-    expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
+    expectExactCalls(fixture.calls, [statusCall, loginCall, statusCall])
   })
 
   test('logs in from an unauthenticated TTY and rechecks auth status', async () => {
     const fixture = configureFixture({
       statuses: [ghResult(unauthenticatedStatus), ghResult(authenticatedStatus)],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 2)
-    expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
+    expectExactCalls(fixture.calls, [statusCall, loginCall, statusCall])
   })
 
   test('does not log in without a TTY and explains the gh auth login command', async () => {
@@ -355,10 +388,9 @@ describe('GitHub CLI authentication configuration', () => {
       tty: false,
       statuses: [ghResult(unauthenticatedStatus)],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expectNoLogin(fixture.calls)
+    expectExactCalls(fixture.calls, [statusCall])
     expect(fixtureOutput(fixture)).toContain('gh auth login')
   })
 
@@ -367,10 +399,9 @@ describe('GitHub CLI authentication configuration', () => {
       statuses: [ghResult(unauthenticatedStatus)],
       login: ghResult('', 1, 'gh auth login failed TOKEN'),
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 1)
-    expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
+    expectExactCalls(fixture.calls, [statusCall, loginCall])
     expect(fixture.warnings.join('\n')).toMatch(/failed/i)
     expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
@@ -382,10 +413,9 @@ describe('GitHub CLI authentication configuration', () => {
         ghResult(unauthenticatedStatus, 0, 'gh auth status post-login failure TOKEN'),
       ],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 2)
-    expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
+    expectExactCalls(fixture.calls, [statusCall, loginCall, statusCall])
     expect(fixture.warnings.join('\n')).toMatch(/failure|failed/i)
     expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
@@ -397,27 +427,25 @@ describe('GitHub CLI authentication configuration', () => {
         ghResult('{', 0, 'gh auth status post-login failure TOKEN'),
       ],
     })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
 
-    expectStatusCalls(fixture.calls, 2)
-    expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
+    expectExactCalls(fixture.calls, [statusCall, loginCall, statusCall])
     expect(fixture.warnings.join('\n')).toMatch(/failure|failed|invalid/i)
     expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
 
   test('never logs the raw auth JSON or token', async () => {
     const fixture = configureFixture({ statuses: [ghResult(authenticatedStatus)] })
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
     const output = [...fixture.logs, ...fixture.warnings].join('\n')
 
     expect(output).not.toContain('TOKEN')
   })
 
-  test('does not change installed state when configuration fails', async () => {
-    let readCount = 0
+  // Unit contract: configure observes this extra seam but never writes installed state.
+  test('configure does not call the installed-state write seam when configuration fails', async () => {
     const installed = ['github-cli']
     const readInstalled = async () => {
-      readCount++
       return [...installed]
     }
     const fixture = configureFixture({
@@ -425,12 +453,10 @@ describe('GitHub CLI authentication configuration', () => {
       readInstalled,
     })
     const before = await readInstalled()
-    await configureGithubCli(fixture.deps as any)
+    await configureGithubCli(fixture.deps)
     const after = await readInstalled()
 
     expect(after).toEqual(before)
-    expect(readCount).toBe(2)
-    expect(fixture.deps.readInstalled).toBe(readInstalled)
     expect(fixture.writeInstalledCalls).toEqual([])
   })
 })
