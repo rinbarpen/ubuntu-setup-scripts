@@ -23,6 +23,7 @@ bash scripts/modules/git.sh
 | `shell` | fish shell + proxy functions |
 | `fisher` | fisher + z, nvm, bass plugins |
 | `git` | git config, SSH key (ed25519), git-lfs |
+| `github-cli` | GitHub CLI (gh) 安装与认证 |
 | `zerotier` | ZeroTier VPN |
 | `zellij` | zellij terminal multiplexer |
 | `browsers` | Chrome, Firefox |
@@ -132,6 +133,15 @@ bash install.sh    # 全局安装后可直接使用 rinbake <command>
 | `rinbake keys` | API Key 管理 |
 | `rinbake mcp` | MCP 服务器管理 |
 | `rinbake status` | 查看安装状态 |
+
+GitHub CLI 模块：
+
+```bash
+rinbake install github-cli
+rinbake configure github-cli
+```
+
+`rinbake configure github-cli` 会调用 GitHub CLI 原生认证流程，认证信息由 `gh` 管理。
 
 ## Requirements
 
