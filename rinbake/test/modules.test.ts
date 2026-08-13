@@ -6,6 +6,7 @@ import { describe, test, expect } from 'bun:test'
 import { getAllModules, getModule } from '../src/modules'
 import { getMcpServers, getAllMcpIds, getMcpDef } from '../src/modules/mcp'
 import { getKey, setKey, listKeys } from '../src/config/keys'
+import { readInstalled } from '../src/config/manager'
 import {
   parseAuthStatus,
   sanitizeDiagnostic,
@@ -28,8 +29,6 @@ type ConfigureDeps = {
   runGh: (args: string[], interactive?: boolean) => Promise<GhResult>
   logInfo: (message: string) => void
   logWarn: (message: string) => void
-  readInstalled: () => Promise<string[]>
-  writeInstalled: (ids: string[]) => Promise<void>
 }
 
 const statusCall: GhCall = {
@@ -66,7 +65,6 @@ function configureFixture(options: {
   const logs: string[] = []
   const warnings: string[] = []
   const confirmOptions: ConfirmOptions[] = []
-  const writeInstalledCalls: string[][] = []
   const statuses = [...(options.statuses ?? [ghResult(authenticatedStatus)])]
   const login = options.login ?? ghResult('')
 
@@ -87,8 +85,6 @@ function configureFixture(options: {
     },
     logInfo: (message: string) => logs.push(message),
     logWarn: (message: string) => warnings.push(message),
-    readInstalled: options.readInstalled ?? (async () => []),
-    writeInstalled: async (ids: string[]) => writeInstalledCalls.push([...ids]),
   }
 
   return {
@@ -97,7 +93,6 @@ function configureFixture(options: {
     logs,
     warnings,
     confirmOptions,
-    writeInstalledCalls,
   }
 }
 
@@ -196,6 +191,13 @@ describe('GitHub CLI auth status parsing', () => {
     expect(sanitized).not.toContain('TOKEN')
     expect(sanitized.toLowerCase()).toContain('authorization')
     expect(sanitized).toContain('[redacted]')
+  })
+
+  test('sanitizes token Authorization diagnostics before key-value redaction', () => {
+    const sanitized = sanitizeDiagnostic('Authorization: token SECRET_VALUE TOKEN')
+
+    expect(sanitized).not.toContain('SECRET_VALUE')
+    expect(sanitized).not.toContain('TOKEN')
   })
 
   test('parses a successful GitHub auth entry without exposing its token', () => {
@@ -462,22 +464,13 @@ describe('GitHub CLI authentication configuration', () => {
     expect(output).not.toContain('TOKEN')
   })
 
-  // Unit contract: configure observes this extra seam but never writes installed state.
-  test('configure does not call the installed-state write seam when configuration fails', async () => {
-    const installed = ['github-cli']
-    const readInstalled = async () => {
-      return [...installed]
-    }
-    const fixture = configureFixture({
-      statuses: [new Error('gh status failed')],
-      readInstalled,
-    })
+  test('configuration failure leaves installed state unchanged', async () => {
+    const fixture = configureFixture({ statuses: [new Error('gh status failed')] })
     const before = await readInstalled()
     await configureGithubCli(fixture.deps)
     const after = await readInstalled()
 
     expect(after).toEqual(before)
-    expect(fixture.writeInstalledCalls).toEqual([])
   })
 })
 
