@@ -31,8 +31,6 @@ export type ConfigureDeps = {
   runGh: (args: string[], interactive?: boolean) => Promise<GhResult>
   logInfo: (message: string) => void
   logWarn: (message: string) => void
-  readInstalled: () => Promise<string[]>
-  writeInstalled: (ids: string[]) => Promise<void>
 }
 
 const STATUS_ARGS = ['auth', 'status', '--json', 'hosts']
@@ -89,9 +87,33 @@ export async function detectGithubCli(hasGh: () => Promise<boolean>): Promise<bo
   return hasGh()
 }
 
+export function sanitizeDiagnostic(value: string): string {
+  return value
+    .replace(/\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_-]+\b/gi, '[redacted]')
+    .replace(/((?:["']?(?:access[_-]?token|oauth[_-]?token|refresh[_-]?token|token|secret|password|authorization)["']?)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[redacted]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bTOKEN\b/gi, '[redacted]')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+}
+
 function safeSummaryValue(value: string): string {
-  if (/token|secret|password|bearer|api[-_ ]?key/i.test(value)) return '[redacted]'
-  return value.replace(/[\r\n\t]/g, ' ').slice(0, 100)
+  return sanitizeDiagnostic(value).slice(0, 100)
+}
+
+function diagnosticOrFallback(value: string, fallback: string): string {
+  return sanitizeDiagnostic(value) || fallback
+}
+
+function errorDiagnostic(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return diagnosticOrFallback(message, 'exception')
+}
+
+function resultDiagnostic(result: GhResult): string {
+  return diagnosticOrFallback(result.stderr || result.stdout, `exit code ${result.exitCode}`)
 }
 
 function authSummary(status: AuthStatus): string {
@@ -154,20 +176,22 @@ export async function installGithubCli(deps: InstallDeps): Promise<boolean> {
 
 async function readAuthStatus(
   deps: ConfigureDeps,
-): Promise<{ status: AuthStatus } | { failed: 'command' | 'invalid' }> {
+): Promise<{ status: AuthStatus } | { failed: 'command' | 'invalid'; detail: string }> {
   let result: GhResult
   try {
     result = await deps.runGh(STATUS_ARGS, false)
-  } catch {
-    return { failed: 'command' }
+  } catch (error) {
+    return { failed: 'command', detail: errorDiagnostic(error) }
   }
 
-  if (result.exitCode !== 0) return { failed: 'command' }
+  if (result.exitCode !== 0) {
+    return { failed: 'command', detail: resultDiagnostic(result) }
+  }
 
   try {
     return { status: parseAuthStatus(result.stdout) }
-  } catch {
-    return { failed: 'invalid' }
+  } catch (error) {
+    return { failed: 'invalid', detail: errorDiagnostic(error) }
   }
 }
 
@@ -179,19 +203,19 @@ async function loginAndRecheck(deps: ConfigureDeps): Promise<void> {
   let loginResult: GhResult
   try {
     loginResult = await deps.runGh(LOGIN_ARGS, true)
-  } catch {
-    deps.logWarn('gh auth login failed')
+  } catch (error) {
+    deps.logWarn(`gh auth login failed: ${errorDiagnostic(error)}`)
     return
   }
 
   if (loginResult.exitCode !== 0) {
-    deps.logWarn('gh auth login failed')
+    deps.logWarn(`gh auth login failed: ${resultDiagnostic(loginResult)}`)
     return
   }
 
   const checked = await readAuthStatus(deps)
   if ('failed' in checked) {
-    deps.logWarn(`gh auth status ${checked.failed === 'invalid' ? 'invalid' : 'failed'} after login`)
+    deps.logWarn(`gh auth status ${checked.failed === 'invalid' ? 'invalid' : 'failed'} after login: ${checked.detail}`)
     return
   }
 
@@ -218,7 +242,7 @@ export async function configureGithubCli(deps: ConfigureDeps): Promise<void> {
 
   const checked = await readAuthStatus(deps)
   if ('failed' in checked) {
-    deps.logWarn(`gh auth status ${checked.failed === 'invalid' ? 'invalid' : 'failed'}`)
+    deps.logWarn(`gh auth status ${checked.failed === 'invalid' ? 'invalid' : 'failed'}: ${checked.detail}`)
     return
   }
 
@@ -262,8 +286,6 @@ const defaultConfigureDeps: ConfigureDeps = {
   runGh: defaultRunGh,
   logInfo,
   logWarn,
-  readInstalled: async () => [],
-  writeInstalled: async () => {},
 }
 
 export async function detect(): Promise<boolean> {
