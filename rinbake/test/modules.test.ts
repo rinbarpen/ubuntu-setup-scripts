@@ -118,6 +118,9 @@ describe('module registration', () => {
     expect(mod!.id).toBe('github-cli')
     expect(mod!.enabled).toBe(true)
     expect(mod!.category).toBe('system')
+    expect(`${mod!.label} ${mod!.description}`).toMatch(/GitHub/i)
+    expect(`${mod!.label} ${mod!.description}`).toMatch(/CLI/i)
+    expect(`${mod!.label} ${mod!.description}`).toMatch(/认证|auth/i)
     expect(typeof mod!.configure).toBe('function')
   })
 
@@ -263,8 +266,7 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 1)
     expectNoLogin(fixture.calls)
-    expect(fixtureOutput(fixture)).toMatch(/gh/)
-    expect(fixtureOutput(fixture)).toMatch(/status/)
+    expect(fixtureOutput(fixture)).toMatch(/failed/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
 
@@ -274,8 +276,7 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 1)
     expectNoLogin(fixture.calls)
-    expect(fixtureOutput(fixture)).toMatch(/gh/)
-    expect(fixtureOutput(fixture)).toMatch(/status/)
+    expect(fixtureOutput(fixture)).toMatch(/failed/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
 
@@ -287,8 +288,7 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 1)
     expectNoLogin(fixture.calls)
-    expect(fixtureOutput(fixture)).toMatch(/gh/)
-    expect(fixtureOutput(fixture)).toMatch(/status/)
+    expect(fixtureOutput(fixture)).toMatch(/invalid/i)
     expect(fixtureOutput(fixture)).not.toContain('TOKEN')
   })
 
@@ -371,9 +371,8 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 1)
     expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
-    expect(fixture.warnings.join('\n')).toMatch(/gh/)
-    expect(fixture.warnings.join('\n')).toMatch(/login/)
-    expect(fixtureOutput(fixture)).not.toContain('TOKEN')
+    expect(fixture.warnings.join('\n')).toMatch(/failed/i)
+    expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
 
   test('warns when successful login is followed by an unauthenticated recheck', async () => {
@@ -387,9 +386,8 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 2)
     expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
-    expect(fixture.warnings.join('\n')).toMatch(/gh/)
-    expect(fixture.warnings.join('\n')).toMatch(/status|auth/i)
-    expect(fixtureOutput(fixture)).not.toContain('TOKEN')
+    expect(fixture.warnings.join('\n')).toMatch(/failure|failed/i)
+    expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
 
   test('warns when the post-login auth recheck returns invalid JSON', async () => {
@@ -403,9 +401,8 @@ describe('GitHub CLI authentication configuration', () => {
 
     expectStatusCalls(fixture.calls, 2)
     expect(fixture.calls).toContainEqual({ args: ['auth', 'login'], interactive: true })
-    expect(fixture.warnings.join('\n')).toMatch(/gh/)
-    expect(fixture.warnings.join('\n')).toMatch(/status/)
-    expect(fixtureOutput(fixture)).not.toContain('TOKEN')
+    expect(fixture.warnings.join('\n')).toMatch(/failure|failed|invalid/i)
+    expect(fixture.warnings.join('\n')).not.toContain('TOKEN')
   })
 
   test('never logs the raw auth JSON or token', async () => {
