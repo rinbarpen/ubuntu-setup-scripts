@@ -6,6 +6,7 @@ import * as bun from './system/bun'
 import * as shell from './system/shell'
 import * as fisher from './system/fisher'
 import * as git from './system/git'
+import * as githubCli from './system/github-cli'
 import * as opencode from './agents/opencode'
 import * as claudeCode from './agents/claude-code'
 import * as codex from './agents/codex'
@@ -38,7 +39,7 @@ interface ModuleExports {
 }
 
 const modules: ModuleExports[] = [
-  ubuntuBase, languages, bun, shell, fisher, git,
+  ubuntuBase, languages, bun, shell, fisher, git, githubCli,
   opencode, claudeCode, codex, hermesAgent, openclaw, paseo, pi, omp,
   relay, zerotier, zellij, browsers, vms, skills,
   aris, dockerConfig, firecrawl, overleaf, vibma,
