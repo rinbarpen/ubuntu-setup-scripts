@@ -42,7 +42,7 @@ export async function select<T extends string>(opts: {
       value: o.value,
       label: o.label,
       hint: o.hint,
-    })),
+    })) as any,
   })
 }
 

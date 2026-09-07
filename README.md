@@ -45,11 +45,19 @@ The agent modules write current default config targets:
 |------|-------------|
 | Codex | `~/.codex/config.toml` |
 | Claude Code | `~/.claude/settings.json` |
+| Claude Code MCP | `~/.claude.json` |
 | opencode | `~/.config/opencode/opencode.json` |
 | Hermes Agent | `~/.hermes/config.yaml` |
 | Paseo | `~/.paseo/config.json` |
 
 `codex` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
+
+### Current machine profile
+
+The current Codex and Claude Code setup is synchronized into
+`profiles/current-machine/`, `.claude/settings.json`, and
+`gpt-5.6-sol-unrestricted-v42.md`. Credential values are not stored in the
+project; user-level credentials remain external.
 
 ## Relay / Proxy (中转站) Model Support
 
@@ -64,7 +72,7 @@ All three agent tools (Claude Code, codex, opencode) support configuring relay/p
 ### Quick Start: GPT/Claude via Relay
 
 **Claude Code:**
-1. Run `claude-code` setup, select a GPT or Claude model
+1. Run `claude-code` setup, select `opusplan`, `opus`, or `sonnet`
 2. Add an `openrouter` or `aihubmix` provider profile  
 3. Use `cc-switch openrouter` to activate, or `./model-switch.sh switch openrouter openai/gpt-4o`
 
@@ -78,7 +86,11 @@ All three agent tools (Claude Code, codex, opencode) support configuring relay/p
 
 ## Using DeepSeek Models
 
-These scripts support DeepSeek V4 Pro and V4 Flash across all three agent tools:
+The synchronized Claude Code baseline uses the `haiku` alias with the existing
+DeepSeek-compatible relay model defaults. Pin a full model ID only when a
+relay/provider requires it.
+
+These scripts support DeepSeek V4 Pro and V4 Flash across the legacy relay integrations:
 
 ### Prerequisites
 DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**, you need an **Anthropic API-compatible gateway** (e.g., OpenRouter, or self-hosted One-API).
@@ -89,7 +101,7 @@ DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**
 3. Select `deepseek-v4-pro` or `deepseek-v4-flash`
 
 ### Codex + DeepSeek
-- The `deepseek` provider type has `base_url = "https://api.deepseek.com"` and `wire_api = "chat"`
+- The `rinbake` Codex module emits provider entries with the current `wire_api = "responses"` value
 - Select model during `codex` setup
 
 ### opencode + DeepSeek
@@ -113,6 +125,16 @@ ssh-key-setup.sh      # SSH key generation wizard
 create-user.sh        # Interactive user creation wizard
 ```
 
+## ego-lite on macOS
+
+The repository includes the synchronized `ego-browser` (ego-lite) skill. On a Mac, run:
+
+```bash
+sh scripts/install-ego-lite-macos.sh
+```
+
+Use `--skill-only` to install only the Codex skill. The full command also installs and launches ego lite; finish its first-run onboarding in the app.
+
 ## rinbake CLI
 
 `rinbake/` 是独立的 bun CLI 工具，提供交互式 Dev环境配置向导。
@@ -130,6 +152,7 @@ bash install.sh    # 全局安装后可直接使用 rinbake <command>
 | `rinbake install [module...]` | 安装模块 |
 | `rinbake install --all` | 全部安装 |
 | `rinbake configure [module...]` | 配置模块 |
+| `rinbake update [codex|claude-code]` | 更新 CLI 并迁移当前配置 |
 | `rinbake keys` | API Key 管理 |
 | `rinbake mcp` | MCP 服务器管理 |
 | `rinbake status` | 查看安装状态 |
@@ -142,6 +165,14 @@ rinbake configure github-cli
 ```
 
 `rinbake configure github-cli` 会调用 GitHub CLI 原生认证流程，认证信息由 `gh` 管理。
+
+### Codex / Claude Code 更新
+
+```bash
+rinbake update codex claude-code
+```
+
+该命令先升级 CLI，再迁移已有设置：Codex 保留本机的 `gpt-5.6-luna`、`high` reasoning、`never` 审批和 TUI/Agent 设置；Claude Code 保留本机的 `haiku`、DeepSeek relay、`deepseek-v4-flash` 子 Agent、`max` effort 和 `bypassPermissions`。未知字段、已有权限规则和 MCP 配置会保留。
 
 ## Requirements
 

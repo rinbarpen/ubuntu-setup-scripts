@@ -52,6 +52,12 @@ const mcpRegistry: Record<string, McpServerDef> = {
     command: 'npx',
     args: ['-y', '@anthropic-ic/claude-in-chrome-mcp'],
   },
+  'chrome-devtools': {
+    id: 'chrome-devtools',
+    name: 'Chrome DevTools (浏览器调试)',
+    command: 'npx',
+    args: ['chrome-devtools-mcp@latest'],
+  },
 }
 
 export function getMcpServers(selected: string[]): Record<string, McpServerDef> {

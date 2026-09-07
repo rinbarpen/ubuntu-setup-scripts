@@ -2,6 +2,7 @@
 import color from 'picocolors'
 import { cmdInit } from './commands/init'
 import { cmdInstall } from './commands/install'
+import { cmdUpdate } from './commands/update'
 import { cmdConfigure } from './commands/configure'
 import { cmdKeys } from './commands/keys'
 import { cmdMcp } from './commands/mcp'
@@ -18,6 +19,7 @@ ${color.underline('用法')}:
   ${color.cyan('rinbake init')}                   交互式安装向导
   ${color.cyan('rinbake install [module...]')}    安装模块（可指定多个）
   ${color.cyan('rinbake install --all')}          安装全部模块
+  ${color.cyan('rinbake update [codex|claude-code]')} 更新 Codex / Claude Code
   ${color.cyan('rinbake configure [module...]')}  配置模块
   ${color.cyan('rinbake keys')}                   API Key 管理
   ${color.cyan('rinbake keys list')}              列出所有 keys
@@ -46,6 +48,9 @@ async function main(): Promise<void> {
       break
     case 'install':
       await cmdInstall(args.slice(1))
+      break
+    case 'update':
+      await cmdUpdate(args.slice(1))
       break
     case 'configure':
     case 'config':

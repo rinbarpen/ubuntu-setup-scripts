@@ -10,6 +10,21 @@ export const description = '安装 Claude Code CLI 并配置模型、provider pr
 export const category = 'agent' as const
 export const enabled = true
 
+const CLAUDE_PACKAGE = '@anthropic-ai/claude-code'
+const CLAUDE_DEFAULTS = {
+  // Synced from the current machine profile on 2026-09-06.
+  model: 'haiku',
+  subagentModel: 'deepseek-v4-flash',
+  effort: 'max',
+  persistedEffort: 'xhigh',
+  permissionMode: 'bypassPermissions',
+  baseUrl: 'https://api.deepseek.com/anthropic',
+  modelId: 'deepseek-v4-pro',
+  sonnetModel: 'deepseek-v4-flash',
+  haikuModel: 'deepseek-v4-flash',
+  statusLineCommand: 'bash ~/.claude/statusline-command.sh',
+} as const
+
 export async function install(): Promise<void> {
   if (await hasCommand('claude')) {
     logStep('Claude Code 已安装')
@@ -19,6 +34,16 @@ export async function install(): Promise<void> {
   }
 
   await configure()
+}
+
+export async function update(): Promise<void> {
+  let result = await $`claude update`.nothrow()
+  if (result.exitCode !== 0) {
+    result = await $`npm install -g ${CLAUDE_PACKAGE}@latest`.nothrow()
+  }
+  if (result.exitCode !== 0) throw new Error(`Claude Code update failed (${result.exitCode})`)
+  await migrateCurrentSettings()
+  logInfo('Claude Code 已更新，配置已迁移到当前格式')
 }
 
 export async function configure(): Promise<void> {
@@ -35,18 +60,17 @@ export async function configure(): Promise<void> {
   const modelOption = await select({
     message: '选择默认模型',
     options: [
-      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', hint: '快速' },
-      { value: 'openai/gpt-5.5', label: 'GPT-5.5', hint: 'via relay' },
-      { value: 'openai/gpt-4o', label: 'GPT-4o', hint: 'via relay' },
-      { value: 'anthropic/claude-sonnet-4-20250514', label: 'Claude Sonnet 4', hint: 'via relay' },
-      { value: 'anthropic/claude-opus-4-20250514', label: 'Claude Opus 4', hint: 'via relay' },
-      { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', hint: '直接 Anthropic' },
+      { value: 'haiku', label: 'haiku', hint: '快速任务' },
+      { value: 'opusplan', label: 'opusplan', hint: 'Plan 用 Opus，执行用 Sonnet' },
+      { value: 'opus', label: 'opus', hint: '复杂推理' },
+      { value: 'sonnet', label: 'sonnet', hint: '日常编码' },
+      { value: 'claude-opus-5', label: 'Claude Opus 5', hint: '固定版本' },
+      { value: 'claude-sonnet-5', label: 'Claude Sonnet 5', hint: '固定版本' },
       { value: 'custom', label: '自定义' },
     ],
   })
 
-  let claudeModel = 'deepseek-v4-pro'
+  let claudeModel: string = CLAUDE_DEFAULTS.model
   if (typeof modelOption === 'string') {
     if (modelOption === 'custom') {
       const c = await input({ message: '输入模型 ID' })
@@ -59,14 +83,14 @@ export async function configure(): Promise<void> {
   const planOption = await select({
     message: '选择 Plan 模式模型',
     options: [
-      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', hint: '推荐' },
-      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', hint: '快速' },
-      { value: 'openai/gpt-5.5', label: 'GPT-5.5', hint: 'via relay' },
-      { value: 'anthropic/claude-sonnet-4-20250514', label: 'Claude Sonnet 4', hint: 'via relay' },
+      { value: 'opus', label: 'opus', hint: '当前 Opus' },
+      { value: 'sonnet', label: 'sonnet', hint: '当前 Sonnet' },
+      { value: 'claude-opus-5', label: 'Claude Opus 5' },
+      { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
       { value: 'custom', label: '自定义' },
     ],
   })
-  let planModel = 'deepseek-v4-pro'
+  let planModel = 'opus'
   if (typeof planOption === 'string') {
     if (planOption === 'custom') {
       const c = await input({ message: '输入 Plan 模型 ID' })
@@ -81,11 +105,17 @@ export async function configure(): Promise<void> {
     options: [
       { value: 'acceptEdits', label: '自动接受编辑', hint: '推荐' },
       { value: 'default', label: '每次询问' },
-      { value: 'bypass', label: '绕过权限检查' },
+      { value: 'plan', label: 'Plan 模式' },
+      { value: 'dontAsk', label: '不询问（按规则执行）' },
+      { value: 'bypassPermissions', label: '绕过权限检查' },
     ],
   })
 
+  settings['$schema'] = 'https://json.schemastore.org/claude-code-settings.json'
   settings.model = claudeModel
+  settings.effortLevel = CLAUDE_DEFAULTS.persistedEffort
+  settings.skipDangerousModePermissionPrompt = true
+  settings.statusLine = { type: 'command', command: CLAUDE_DEFAULTS.statusLineCommand }
 
   const env: Record<string, string> = (settings.env as Record<string, string>) || {}
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
@@ -93,16 +123,24 @@ export async function configure(): Promise<void> {
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   env.ENABLE_TOOL_SEARCH = '1'
   env.DISABLE_EXTRA_USAGE_COMMAND = '1'
-  env.ANTHROPIC_MODEL = claudeModel
-  env.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeModel.includes('deepseek') ? 'deepseek-v4-flash' : claudeModel
-  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-v4-flash'
-  env.CLAUDE_CODE_SUBAGENT_MODEL = claudeModel
+  env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL || CLAUDE_DEFAULTS.baseUrl
+  env.ANTHROPIC_MODEL = env.ANTHROPIC_MODEL || (claudeModel === 'haiku' ? CLAUDE_DEFAULTS.modelId : claudeModel)
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL = env.ANTHROPIC_DEFAULT_OPUS_MODEL || CLAUDE_DEFAULTS.modelId
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL = env.ANTHROPIC_DEFAULT_SONNET_MODEL || CLAUDE_DEFAULTS.sonnetModel
+  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || CLAUDE_DEFAULTS.haikuModel
+  env.CLAUDE_CODE_SUBAGENT_MODEL = CLAUDE_DEFAULTS.subagentModel
   env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '1000000'
-  env.CLAUDE_CODE_EFFORT_LEVEL = 'max'
-  env.ANTHROPIC_DEFAULT_OPUS_MODEL = planModel
+  env.CLAUDE_CODE_EFFORT_LEVEL = CLAUDE_DEFAULTS.effort
+  if (typeof planModel === 'string' && planModel.trim()) {
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = planModel === 'opus'
+      ? 'claude-opus-5'
+      : planModel === 'sonnet' ? 'claude-sonnet-5' : planModel
+  }
   settings.env = env
 
-  settings.permissions = { defaultMode: typeof permOption === 'string' ? permOption : 'acceptEdits' }
+  const permissions = (settings.permissions as Record<string, unknown>) || {}
+  permissions.defaultMode = typeof permOption === 'string' ? permOption : CLAUDE_DEFAULTS.permissionMode
+  settings.permissions = permissions
 
   // Provider profiles
   const profilesDir = `${process.env.HOME || '/root'}/.config/cc-profiles`
@@ -206,9 +244,10 @@ cc-switch() {
     mcpServers[id] = entry
   }
 
-  if (Object.keys(mcpServers).length > 0) {
-    (settings as Record<string, unknown>).mcpServers = mcpServers
-  }
+  const legacyMcp = (settings as Record<string, unknown>).mcpServers
+  delete (settings as Record<string, unknown>).mcpServers
+  const mcpToWrite = Object.keys(mcpServers).length > 0 ? mcpServers : legacyMcp
+  if (mcpToWrite && typeof mcpToWrite === 'object') await mergeClaudeMcpConfig(mcpToWrite as Record<string, unknown>)
 
   await Bun.write(settingsPath, JSON.stringify(settings, null, 2) + '\n')
   logInfo(`Claude Code 配置已写入 ${settingsPath}`)
@@ -268,4 +307,57 @@ async function addProviderProfile(profilesDir: string): Promise<void> {
 
 export async function detect(): Promise<boolean> {
   return hasCommand('claude')
+}
+
+export async function migrateCurrentSettings(): Promise<void> {
+  const settingsPath = `${process.env.HOME || '/root'}/.claude/settings.json`
+  const settingsDir = settingsPath.replace(/\/[^/]+$/, '')
+  await $`mkdir -p ${settingsDir}`.nothrow()
+  let settings: Record<string, unknown> = {}
+  const file = Bun.file(settingsPath)
+  try {
+    if (await file.exists()) settings = JSON.parse(await file.text())
+  } catch {
+    settings = {}
+  }
+  settings['$schema'] = 'https://json.schemastore.org/claude-code-settings.json'
+  const legacyMcp = settings.mcpServers
+  delete settings.mcpServers
+  const currentModel = typeof settings.model === 'string' && settings.model.trim()
+    ? settings.model
+    : CLAUDE_DEFAULTS.model
+  settings.model = currentModel
+  settings.effortLevel = CLAUDE_DEFAULTS.persistedEffort
+  settings.skipDangerousModePermissionPrompt = settings.skipDangerousModePermissionPrompt ?? true
+  settings.statusLine = settings.statusLine || { type: 'command', command: CLAUDE_DEFAULTS.statusLineCommand }
+  const env = (settings.env as Record<string, string>) || {}
+  env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL || CLAUDE_DEFAULTS.baseUrl
+  env.ANTHROPIC_MODEL = env.ANTHROPIC_MODEL || (currentModel === 'haiku' ? CLAUDE_DEFAULTS.modelId : currentModel)
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL = env.ANTHROPIC_DEFAULT_OPUS_MODEL || CLAUDE_DEFAULTS.modelId
+  env.CLAUDE_CODE_SUBAGENT_MODEL = env.CLAUDE_CODE_SUBAGENT_MODEL || CLAUDE_DEFAULTS.subagentModel
+  env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = env.CLAUDE_CODE_MAX_OUTPUT_TOKENS || '1000000'
+  env.CLAUDE_CODE_EFFORT_LEVEL = CLAUDE_DEFAULTS.effort
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL = env.ANTHROPIC_DEFAULT_SONNET_MODEL || CLAUDE_DEFAULTS.sonnetModel
+  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || CLAUDE_DEFAULTS.haikuModel
+  settings.env = env
+  const permissions = (settings.permissions as Record<string, unknown>) || {}
+  if (permissions.defaultMode === 'bypass') permissions.defaultMode = 'bypassPermissions'
+  if (!permissions.defaultMode) permissions.defaultMode = CLAUDE_DEFAULTS.permissionMode
+  settings.permissions = permissions
+  await Bun.write(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  if (legacyMcp && typeof legacyMcp === 'object') await mergeClaudeMcpConfig(legacyMcp as Record<string, unknown>)
+}
+
+/** User-scoped MCP servers live in ~/.claude.json in current Claude Code. */
+async function mergeClaudeMcpConfig(mcpServers: Record<string, unknown>): Promise<void> {
+  const path = `${process.env.HOME || '/root'}/.claude.json`
+  let config: Record<string, unknown> = {}
+  const file = Bun.file(path)
+  try {
+    if (await file.exists()) config = JSON.parse(await file.text())
+  } catch {
+    config = {}
+  }
+  config.mcpServers = { ...(config.mcpServers as Record<string, unknown> || {}), ...mcpServers }
+  await Bun.write(path, JSON.stringify(config, null, 2) + '\n')
 }

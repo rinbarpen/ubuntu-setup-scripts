@@ -1,0 +1,574 @@
+personality = "pragmatic"
+approvals_reviewer = "user"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "high"
+plan_mode_reasoning_effort = "high"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+model_instructions_file = "./gpt-5.6-sol-unrestricted-v42.md"
+#model_provider = "custom"
+disable_response_storage = true
+
+model_reasoning_summary = "auto"
+model_verbosity = "medium"
+[features]
+js_repl = true
+use_linux_sandbox_bwrap = true
+multi_agent = true
+apps = false
+prevent_idle_sleep = true
+guardian_approval = true
+image_detail_original = true
+
+[tui]
+status_line = [ "model-with-reasoning", "context-remaining", "git-branch", "fast-mode", "five-hour-limit", "weekly-limit", "project-name", "run-state", "context-window-size",]
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+
+[agent]
+approval_policy = "never"
+power_level = "full-access"
+sandbox_mode = "danger-full-access"
+
+[skills]
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-accessibility/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-architecture/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-coroutines/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-data-layer/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-emulator-skill/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-gradle-logic/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-retrofit/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-testing/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/android-viewmodel/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/ios-app-intents/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/ios-debugger-agent/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/swiftui-liquid-glass/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/swiftui-performance-audit/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/swiftui-view-refactor/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/build-ios-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/swiftui-ui-patterns/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/game-playtest/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/game-studio/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/game-ui-frontend/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/react-three-fiber-game/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/phaser-2d-game/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/three-webgl-game/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/sprite-pipeline/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/web-game-foundations/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/game-studio/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/web-3d-asset-pipeline/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/elon-musk-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/feynman-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-drive/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-docs/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/gmail/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/gmail-inbox-triage/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/gmail/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/gmail/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-drive-comments/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-sheets/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-sheets-formula-builder/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-slides-import-presentation/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-slides/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-slides-template-surgery/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-slides-template-migration/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/google-drive/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/google-slides-visual-iteration/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/pptx/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/slides/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/plugins/cache/openai-curated/test-android-apps/b1986b3d3da5bb8a04d3cb1e69af5a29bb5c2c04/skills/android-emulator-qa/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/trump-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/x-mastery-mentor/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/zhang-yiming-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/zhangxuefeng-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/.system/openai-docs/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.codex/skills/.system/imagegen/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/andrej-karpathy-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/taleb-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/munger-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/paul-graham-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/naval-perspective/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/rczx/.agents/skills/huashu-nuwa/examples/mrbeast-perspective/SKILL.md"
+enabled = false
+
+["tui.model_availability_nux"]
+"gpt-5.5" = 4
+
+["notice.model_migrations"]
+"gpt-5.3-codex" = "gpt-5.4"
+
+[windows]
+sandbox = "elevated"
+
+[projects."/home/rczx/workspace/rinbarpen"]
+trust_level = "trusted"
+
+[projects."/home/rczx"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/auto-browser"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/aira"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/analyzer"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/neuroswarm"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/llm-router"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/vibe-coding"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/services/rczx"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/rinka"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/neuropanel"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/code-all-in-one"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/inference-master"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/study/lessons"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/comfyui-forge"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/novel-tts"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/eat-health-app"]
+trust_level = "trusted"
+
+[projects."/home/rczx/Desktop"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/todo-app"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/patent-writer"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/medical"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/stock-boss"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/auto-scheduler"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/patent"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/blank"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/lab/paper-writer-skill"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/lab/model-architecture-drawer"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/test"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/Desktop/Anycast"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/gym/proxy_server"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/study/l4"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/templates"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/todo-app"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/auto-browser/agent-browser"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/a-stock-investment"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/DeepEar"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/labs/doulun"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/codex-cc-manager"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/labs/doulun_backend"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/labs/doulun_backend/my-project"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/roles"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/ppt-master/aigc-3dmodel"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/ppt-master/aigc-comic"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/labs/a-bot"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/auto-stock-bot"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/ppt-master"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/services/EasyAccounts"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/education-ai"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/docx-polar"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/contests/ruikang/tianqi_2026"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/my-secretary"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/gym/ppt2video"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/ai-edu"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/projects/rinbake"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/character-skills"]
+trust_level = "trusted"
+
+[projects."/home/rczx/.claude/skills"]
+trust_level = "trusted"
+
+[projects."/home/rczx/.codex/skills"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/services/Open-AutoGLM"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/dianyun"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/services/OmniRoute"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/embody-ai-chat-agent"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/dianyun-rebuild"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/cashier"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/powerful-paper-finder"]
+trust_level = "trusted"
+
+[plugins."gmail@openai-curated"]
+enabled = true
+
+[plugins."vercel@openai-curated"]
+enabled = false
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."google-drive@openai-curated"]
+enabled = true
+
+[plugins."build-ios-apps@openai-curated"]
+enabled = true
+
+[plugins."build-web-apps@openai-curated"]
+enabled = false
+
+[plugins."game-studio@openai-curated"]
+enabled = true
+
+[plugins."hugging-face@openai-curated"]
+enabled = false
+
+[plugins."test-android-apps@openai-curated"]
+enabled = true
+
+[plugins."sites@openai-bundled"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
+[mcp_servers.chrome-devtools]
+type = "stdio"
+command = "npx"
+args = [ "chrome-devtools-mcp@latest",]
+
+[mcp_servers.chrome-devtools.tools.take_snapshot]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.navigate_page]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.click]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.new_page]
+approval_mode = "approve"
+
+[mcp_servers.chrome-devtools.tools.evaluate_script]
+approval_mode = "approve"
+
+[mcp_servers.context7]
+type = "stdio"
+command = "npx"
+args = [ "-y", "@upstash/context7-mcp@latest",]
+
+[hooks.state]
+
+[hooks.state."/home/rczx/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:e87180aa7a845a4e8671c742154d02f3336ff1693cd84353786950676a35b646"
+enabled = true
+
+[hooks.state."/home/rczx/.codex/hooks.json:permission_request:0:0"]
+trusted_hash = "sha256:59a36501523d6a8b85cc02c3a736ad805de653ce908e10b602125d648115300c"
+
+[hooks.state."/home/rczx/.codex/hooks.json:post_tool_use:0:0"]
+trusted_hash = "sha256:1d4424675dbac0e5f5247f7637f48d3e4ad1e3f906f9fd05a92257543f684ec0"
+
+[hooks.state."/home/rczx/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:1bbf80a578a86f31ebe527dd23122c0325a86924605bc751ce7afdc4fee2af28"
+
+[hooks.state."/home/rczx/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:8fa5975ee559d019faf357e2e7880255e6b26a108505ece97171c4988eef96e9"
+
+#[model_providers.custom]
+#name = "custom"
+#wire_api = "responses"
+#requires_openai_auth = true
+#base_url = "https://aixor.org/v1"
+
+[hooks.state."/home/rczx/.codex/hooks.json:session_start:0:0"]
+enabled = true
+trusted_hash = "sha256:48cf0356729e8f09314df10a0aedff6c1b5c1edc24a7c39d2188a77f3eb88877"
+[hooks.state."/home/rczx/.codex/hooks.json:user_prompt_submit:1:0"]
+enabled = true
+trusted_hash = "sha256:614d95ad2e3bf2ed31d1daa8aa128b034542329119e6aa3d6558e6a42ba08289"
+[hooks.state."/home/rczx/.codex/hooks.json:pre_tool_use:1:0"]
+enabled = true
+trusted_hash = "sha256:8bf6be62296d7946c50016c3210ec45588fdf4602ea546973965e02eb297ac16"
+[hooks.state."/home/rczx/.codex/hooks.json:permission_request:1:0"]
+enabled = true
+trusted_hash = "sha256:aebba8c2b0d3cd549c41bcd784b167b903fd0a113729f434b7b47c3cf8e5f5c7"
+[hooks.state."/home/rczx/.codex/hooks.json:post_tool_use:1:0"]
+enabled = true
+trusted_hash = "sha256:29eeb1899e2d9f4cfd5cb53270f66be00760c2b3b9ab255fbff6d229ce84a7de"
+[hooks.state."/home/rczx/.codex/hooks.json:subagent_start:0:0"]
+enabled = true
+trusted_hash = "sha256:359474cdc441d7e3904c24dcada98ada1d0e7325afb0501d90859d8174cebbf8"
+[hooks.state."/home/rczx/.codex/hooks.json:subagent_stop:0:0"]
+enabled = true
+trusted_hash = "sha256:4393e34be94362e1dd2a97a92db52340826336f1e60be18a1f2fdccfc132e497"
+[hooks.state."/home/rczx/.codex/hooks.json:stop:1:0"]
+enabled = true
+trusted_hash = "sha256:7eb5e015802d0f104b977cf03dcdb0410d7eb99c62d0c9a7bef56805b90a975a"
+[marketplaces.openai-bundled]
+source_type = "local"
+source = "/home/rczx/.codex/.tmp/bundled-marketplaces/openai-bundled"
+
+[projects."/home/rczx/workspace/rinbarpen/character-skills-greenling"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/character-skills-char"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/vibe-coding-melusine"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/rinbarpen/work/ai-edu-main"]
+trust_level = "trusted"
+
+[projects."/home/rczx/workspace/casher/hole"]
+trust_level = "trusted"

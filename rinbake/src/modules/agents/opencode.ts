@@ -121,7 +121,7 @@ export async function configure(): Promise<void> {
   // MCP servers
   const mcpSelection = await selectMcpServers()
   const mcpNeeded = mcpSelection.filter(s => s.selected)
-  const mcpMap = getMcpServers(mcpNeeded)
+  const mcpMap = getMcpServers(mcpNeeded.map(s => s.id))
   const keysNeededForMcp = collectMcpKeys(mcpNeeded)
 
   for (const key of keysNeededForMcp) {

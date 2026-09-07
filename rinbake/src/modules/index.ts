@@ -34,6 +34,7 @@ interface ModuleExports {
   category: 'system' | 'agent' | 'mcp' | 'other'
   enabled: boolean
   install: () => Promise<void>
+  update?: () => Promise<void>
   configure?: () => Promise<void>
   detect?: () => Promise<boolean>
 }
@@ -53,6 +54,7 @@ export function getAllModules(): ModuleDefinition[] {
     category: m.category,
     enabled: m.enabled,
     install: m.install,
+    update: m.update,
     configure: m.configure,
     detect: m.detect,
   }))

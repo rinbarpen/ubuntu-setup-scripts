@@ -23,7 +23,7 @@ export async function install(): Promise<void> {
   })
 
   const selected = Array.isArray(selection)
-    ? selection.filter((v): v is string => typeof v === 'string')
+    ? selection.filter(v => typeof v === 'string').map(String)
     : []
 
   for (const skill of selected) {

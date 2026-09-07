@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bash scripts/setup.sh                        # Main entry: whiptail menu → run selected modules
 bash scripts/modules/<name>.sh               # Run any single module standalone
 bash scripts/tests/test-agent-configs.sh     # Integration test for agent configs (no sudo required)
-bash scripts/tests/test-all-agents.sh       # Integration test for pi, omp, all-agents (no sudo required)
-bash scripts/modules/all-agents.sh          # Unified: configure all 5 AI agents at once
+bash scripts/tests/test-all-agents.sh        # Integration test for pi, omp, all-agents (no sudo required)
+bash scripts/modules/all-agents.sh           # Unified: configure all 5 AI agents at once
+rinbake update codex claude-code             # Update both CLIs and migrate current settings
 ./model-switch.sh list                       # List supported AI providers
 ./model-switch.sh switch <provider> [model]  # Switch Claude Code provider/model
 ./model-switch.sh status                     # Show current Claude Code model config
@@ -70,6 +71,13 @@ SKILL.md files shipped alongside modules, installed to `~/.claude/skills/`:
 | opencode | `~/.config/opencode/opencode.json` |
 | Claude Code profiles | `~/.config/cc-profiles/*.env` |
 | Hermes Agent | `~/.hermes/config.yaml` |
+
+## Synchronized machine profile
+
+- `profiles/current-machine/codex.config.toml` is the sanitized Codex snapshot.
+- `.claude/settings.json` is the project-scoped Claude Code settings snapshot.
+- `gpt-5.6-sol-unrestricted-v42.md` is the synchronized Codex instruction file.
+- Credential values and runtime account state stay outside the repository.
 
 ## Design Spec
 

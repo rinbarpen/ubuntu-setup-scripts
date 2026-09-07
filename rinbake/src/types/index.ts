@@ -5,6 +5,7 @@ export interface ModuleDefinition {
   category: 'system' | 'agent' | 'mcp' | 'other'
   enabled: boolean
   install: () => Promise<void>
+  update?: () => Promise<void>
   configure?: () => Promise<void>
   detect?: () => Promise<boolean>
 }
