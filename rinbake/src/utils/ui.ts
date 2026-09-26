@@ -2,7 +2,10 @@ import * as p from '@clack/prompts'
 import color from 'picocolors'
 
 // Long enough for the rest of an escape sequence to arrive in the same read.
-const ESC_SEQ_WAIT_MS = 40
+// TTY/PTY input can split one key sequence across reads with a noticeable gap.
+// Keep this comfortably above typical inter-read jitter so an arrow key is not
+// mistaken for a bare ESC followed by unrelated input.
+const ESC_SEQ_WAIT_MS = 100
 // Max gap between two bare ESC presses for it to count as "double ESC".
 const DOUBLE_ESC_MS = 600
 
@@ -56,9 +59,15 @@ function registerEscPress(): void {
 }
 
 function onStdinData(chunk: Buffer): void {
+  // A timeout belongs to the previously observed input boundary. Always
+  // cancel it before consuming another chunk: that chunk may complete an
+  // escape sequence (or begin a new one) split by the tty stream.
+  if (seqTimer) {
+    clearTimeout(seqTimer)
+    seqTimer = null
+  }
   scanEsc(chunk, scan)
   if (!scan.pending) return
-  if (seqTimer) clearTimeout(seqTimer)
   seqTimer = setTimeout(() => {
     seqTimer = null
     if (!scan.pending) return

@@ -727,10 +727,26 @@ describe('scanEsc', () => {
 
   test('repeated cursor movement stays clean', () => {
     const state = createEscScanState()
-    for (let i = 0; i < 20; i++) scanEsc(DOWN, state)
-    for (let i = 0; i < 20; i++) scanEsc(UP, state)
+    for (let i = 0; i < 20; i++) {
+      scanEsc(DOWN, state)
+      scanEsc(UP, state)
+    }
     expect(state.pending).toBe(false)
     expect(state.inCsi).toBe(false)
+  })
+
+  test('mixed movement sequences remain clean when every byte is a separate read', () => {
+    const state = createEscScanState()
+    for (let i = 0; i < 20; i++) {
+      for (const byte of i % 2 ? UP : DOWN) scanEsc([byte], state)
+    }
+    expect(state).toEqual({ pending: false, inCsi: false })
+  })
+
+  test('a movement sequence immediately before a bare ESC leaves only the ESC pending', () => {
+    const state = createEscScanState()
+    scanEsc([...DOWN, ...UP, 0x1b], state)
+    expect(state).toEqual({ pending: true, inCsi: false })
   })
 
   test('a lone ESC stays pending for the caller to confirm', () => {
