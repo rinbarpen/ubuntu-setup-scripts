@@ -11,6 +11,8 @@ import { cmdApiConfig } from './commands/api-config'
 import { cmdModelSwitch } from './commands/model-switch'
 import { cmdSshKey } from './commands/ssh-key'
 import { cmdCreateUser } from './commands/create-user'
+import { cmdOmniRoute } from './commands/omniroute'
+import { restoreTerminal } from './utils/ui'
 
 const help = `
 ${color.bold('rinbake')} — Ubuntu 开发环境一站式安装配置工具
@@ -19,7 +21,8 @@ ${color.underline('用法')}:
   ${color.cyan('rinbake init')}                   交互式安装向导
   ${color.cyan('rinbake install [module...]')}    安装模块（可指定多个）
   ${color.cyan('rinbake install --all')}          安装全部模块
-  ${color.cyan('rinbake update [codex|claude-code]')} 更新 Codex / Claude Code
+  ${color.cyan('rinbake update [module...]')}      更新模块
+  ${color.cyan('rinbake omniroute <action>')}    管理 OmniRoute 服务与 Provider
   ${color.cyan('rinbake configure [module...]')}  配置模块
   ${color.cyan('rinbake keys')}                   API Key 管理
   ${color.cyan('rinbake keys list')}              列出所有 keys
@@ -37,6 +40,22 @@ ${color.underline('用法')}:
 ${color.dim('配置目录: ~/.config/rinbake/')}
 ${color.dim('API Keys:  ~/.config/rinbake/keys.env')}
 `
+
+process.on('exit', restoreTerminal)
+process.on('SIGINT', () => {
+  restoreTerminal()
+  process.exit(130)
+})
+process.on('uncaughtException', err => {
+  restoreTerminal()
+  console.error(color.red('未捕获异常:'), err instanceof Error ? (err.stack ?? err.message) : err)
+  process.exit(1)
+})
+process.on('unhandledRejection', err => {
+  restoreTerminal()
+  console.error(color.red('未处理的 Promise 拒绝:'), err)
+  process.exit(1)
+})
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
@@ -80,6 +99,13 @@ async function main(): Promise<void> {
     case 'create-user':
       await cmdCreateUser(args.slice(1))
       break
+    case 'omniroute':
+      await cmdOmniRoute(args.slice(1))
+      break
+    case 'relay':
+      // Backward-compatible command alias; the old relay module is gone.
+      await cmdOmniRoute(['configure', ...args.slice(1)])
+      break
     case 'help':
     case '-h':
     case '--help':
@@ -90,6 +116,7 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error(color.red('错误:'), err)
+  restoreTerminal()
+  console.error(color.red('错误:'), err instanceof Error ? (err.stack ?? err.message) : err)
   process.exit(1)
 })

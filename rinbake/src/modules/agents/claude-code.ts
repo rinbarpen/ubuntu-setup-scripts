@@ -3,10 +3,12 @@ import { hasCommand } from '../../utils'
 import { logStep, logInfo, select, input, confirm, multiselect } from '../../utils/ui'
 import { promptAndSetKey } from '../../config/keys'
 import { getMcpServers } from '../mcp'
+import { configureClient, ensureReady } from '../omniroute'
+import { getOmniRouteClientUrl, OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
 
 export const id = 'claude-code'
 export const label = 'Claude Code + cc-switch'
-export const description = '安装 Claude Code CLI 并配置模型、provider profiles、MCP'
+export const description = '安装 Claude Code CLI 并通过 OmniRoute 配置模型、profiles、MCP'
 export const category = 'agent' as const
 export const enabled = true
 
@@ -18,10 +20,10 @@ const CLAUDE_DEFAULTS = {
   effort: 'max',
   persistedEffort: 'xhigh',
   permissionMode: 'bypassPermissions',
-  baseUrl: 'https://api.deepseek.com/anthropic',
-  modelId: 'deepseek-v4-pro',
-  sonnetModel: 'deepseek-v4-flash',
-  haikuModel: 'deepseek-v4-flash',
+  baseUrl: getOmniRouteClientUrl('claude-code'),
+  modelId: OMNIROUTE_DEFAULT_MODEL,
+  sonnetModel: OMNIROUTE_DEFAULT_MODEL,
+  haikuModel: OMNIROUTE_DEFAULT_MODEL,
   statusLineCommand: 'bash ~/.claude/statusline-command.sh',
 } as const
 
@@ -47,6 +49,9 @@ export async function update(): Promise<void> {
 }
 
 export async function configure(): Promise<void> {
+  await ensureReady()
+  await configureClient('claude-code')
+
   const settingsPath = `${process.env.HOME || '/root'}/.claude/settings.json`
   const settingsDir = settingsPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${settingsDir}`.nothrow()
@@ -123,7 +128,7 @@ export async function configure(): Promise<void> {
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   env.ENABLE_TOOL_SEARCH = '1'
   env.DISABLE_EXTRA_USAGE_COMMAND = '1'
-  env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL || CLAUDE_DEFAULTS.baseUrl
+  env.ANTHROPIC_BASE_URL = CLAUDE_DEFAULTS.baseUrl
   env.ANTHROPIC_MODEL = env.ANTHROPIC_MODEL || (claudeModel === 'haiku' ? CLAUDE_DEFAULTS.modelId : claudeModel)
   env.ANTHROPIC_DEFAULT_OPUS_MODEL = env.ANTHROPIC_DEFAULT_OPUS_MODEL || CLAUDE_DEFAULTS.modelId
   env.ANTHROPIC_DEFAULT_SONNET_MODEL = env.ANTHROPIC_DEFAULT_SONNET_MODEL || CLAUDE_DEFAULTS.sonnetModel
@@ -258,9 +263,7 @@ async function addProviderProfile(profilesDir: string): Promise<void> {
     message: '选择供应商类型',
     options: [
       { value: 'anthropic', label: 'Anthropic', hint: '官方 API' },
-      { value: 'openrouter', label: 'OpenRouter', hint: '中转 GPT/Claude' },
       { value: 'deepseek', label: 'DeepSeek', hint: 'DeepSeek API' },
-      { value: 'aihubmix', label: 'AIHubMix', hint: '中转' },
       { value: 'custom', label: '自定义' },
     ],
   })
@@ -274,19 +277,9 @@ async function addProviderProfile(profilesDir: string): Promise<void> {
       if (key) content = `export ANTHROPIC_API_KEY="${key}"`
       break
     }
-    case 'openrouter': {
-      const key = await promptAndSetKey('OPENROUTER_API_KEY', 'OpenRouter API Key')
-      if (key) content = `export ANTHROPIC_API_KEY="${key}"\nexport ANTHROPIC_BASE_URL="https://openrouter.ai/api/v1"`
-      break
-    }
     case 'deepseek': {
       const key = await promptAndSetKey('DEEPSEEK_API_KEY', 'DeepSeek API Key')
       if (key) content = `export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"\nexport ANTHROPIC_API_KEY="${key}"`
-      break
-    }
-    case 'aihubmix': {
-      const key = await promptAndSetKey('AIHUBMIX_API_KEY', 'AIHubMix API Key')
-      if (key) content = `export ANTHROPIC_BASE_URL="https://aihubmix.com/v1"\nexport ANTHROPIC_API_KEY="${key}"`
       break
     }
     case 'custom': {
@@ -331,13 +324,13 @@ export async function migrateCurrentSettings(): Promise<void> {
   settings.skipDangerousModePermissionPrompt = settings.skipDangerousModePermissionPrompt ?? true
   settings.statusLine = settings.statusLine || { type: 'command', command: CLAUDE_DEFAULTS.statusLineCommand }
   const env = (settings.env as Record<string, string>) || {}
-  env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL || CLAUDE_DEFAULTS.baseUrl
-  env.ANTHROPIC_MODEL = env.ANTHROPIC_MODEL || (currentModel === 'haiku' ? CLAUDE_DEFAULTS.modelId : currentModel)
-  env.ANTHROPIC_DEFAULT_OPUS_MODEL = env.ANTHROPIC_DEFAULT_OPUS_MODEL || CLAUDE_DEFAULTS.modelId
-  env.CLAUDE_CODE_SUBAGENT_MODEL = env.CLAUDE_CODE_SUBAGENT_MODEL || CLAUDE_DEFAULTS.subagentModel
+  env.ANTHROPIC_BASE_URL = CLAUDE_DEFAULTS.baseUrl
+  env.ANTHROPIC_MODEL = currentModel === 'haiku' ? CLAUDE_DEFAULTS.modelId : currentModel
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL = CLAUDE_DEFAULTS.modelId
+  env.CLAUDE_CODE_SUBAGENT_MODEL = CLAUDE_DEFAULTS.subagentModel
   env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = env.CLAUDE_CODE_MAX_OUTPUT_TOKENS || '1000000'
   env.CLAUDE_CODE_EFFORT_LEVEL = CLAUDE_DEFAULTS.effort
-  env.ANTHROPIC_DEFAULT_SONNET_MODEL = env.ANTHROPIC_DEFAULT_SONNET_MODEL || CLAUDE_DEFAULTS.sonnetModel
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL = CLAUDE_DEFAULTS.sonnetModel
   env.ANTHROPIC_DEFAULT_HAIKU_MODEL = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || CLAUDE_DEFAULTS.haikuModel
   settings.env = env
   const permissions = (settings.permissions as Record<string, unknown>) || {}

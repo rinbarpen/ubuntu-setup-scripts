@@ -29,12 +29,13 @@ bash scripts/modules/git.sh
 | `browsers` | Chrome, Firefox |
 | `vms` | VirtualBox, QEMU/KVM |
 | `openclaw` | openclaw (npm) |
-| `opencode` | opencode CLI + relay provider config + defaults + MCP |
+| `opencode` | opencode CLI + OmniRoute model gateway + defaults + MCP |
 | `codex` | codex CLI + multi-provider + codex-auth + features/TUI config |
 | `claude-code` | Claude Code + cc-switch + provider profiles + GPT/Claude models |
+| `omniroute` | OmniRoute 本机 Gateway + Dashboard + Provider + Codex/Claude/OpenCode 配置 |
 | `hermes-agent` | Hermes CLI + model config + MCP |
 | `paseo` | Paseo CLI + daemon config + MCP |
-| `vibma` | Vibma MCP + Figma plugin installer + Figma skills |
+| `orca` | Orca Linux AppImage + CLI + Agent hooks/skills + headless service |
 | `skills` | Install and register external skill collections |
 
 ## Agent Tool Defaults
@@ -49,8 +50,31 @@ The agent modules write current default config targets:
 | opencode | `~/.config/opencode/opencode.json` |
 | Hermes Agent | `~/.hermes/config.yaml` |
 | Paseo | `~/.paseo/config.json` |
+| Orca | `/opt/orca/orca-linux.AppImage`, `/etc/systemd/system/orca-serve.service` |
 
 `codex` leaves any legacy `~/.codex/config.yaml` in place, but no longer writes it.
+
+### Paseo / Orca
+
+```bash
+rinbake install paseo orca
+rinbake configure paseo orca
+
+# Paseo daemon
+paseo daemon config get daemon.listen
+paseo daemon start
+
+# Orca hooks and service
+orca-ide agent hooks status --json
+sudo systemctl status orca-serve.service
+```
+
+The Paseo module preserves existing fields in `~/.paseo/config.json` and lets you
+choose the daemon listen address, MCP, Agent injection, and relay settings. Orca
+uses the Linux AppImage and registers the non-conflicting `orca-ide` command.
+The headless service uses port `6768` by default; enter a reachable pairing
+address when configuring remote clients. Orca's `--pairing-address` advertises
+the client endpoint and does not change the listener bind address.
 
 ### Current machine profile
 
@@ -59,41 +83,54 @@ The current Codex and Claude Code setup is synchronized into
 `gpt-5.6-sol-unrestricted-v42.md`. Credential values are not stored in the
 project; user-level credentials remain external.
 
-## Relay / Proxy (中转站) Model Support
+## OmniRoute Model Gateway
 
-All three agent tools (Claude Code, codex, opencode) support configuring relay/proxy endpoints to route GPT and Claude models through third-party services:
+OmniRoute is the model gateway for all model-routing flows. The Agent modules
+and legacy shell installers use the local service instead of writing direct
+third-party relay endpoints.
 
-| Service | Endpoint | Description |
-|---------|----------|-------------|
-| **OpenRouter** | `https://openrouter.ai/api/v1` | Routes GPT, Claude, and other models |
-| **AIHubMix** | `https://aihubmix.com/v1` | Multi-model relay endpoint |
-| **Custom** | User-defined | Any relay/proxy endpoint |
+| Client | Endpoint | Default model |
+|--------|----------|---------------|
+| Codex | `http://localhost:20128/v1` | `auto` |
+| Claude Code | `http://localhost:20128` | `auto` |
+| OpenCode | `http://localhost:20128/v1` | `omniroute/auto` |
+| Pi / OMP | `http://localhost:20128/v1` | `omniroute/auto` |
 
-### Quick Start: GPT/Claude via Relay
+### Quick Start
 
-**Claude Code:**
-1. Run `claude-code` setup, select `opusplan`, `opus`, or `sonnet`
-2. Add an `openrouter` or `aihubmix` provider profile  
-3. Use `cc-switch openrouter` to activate, or `./model-switch.sh switch openrouter openai/gpt-4o`
+```bash
+rinbake install omniroute
+rinbake omniroute status
+rinbake omniroute configure codex
+rinbake omniroute configure claude-code
+rinbake omniroute configure opencode
+rinbake omniroute providers
+```
 
-**Codex:**
-1. Run `codex` setup, add `openrouter` or `aihubmix` as provider type
-2. Enter API key, select the relay model as default
+Provider connections and dynamic model catalogs are managed in Dashboard →
+Providers. Browser or OAuth connections such as `chatgpt-web` and
+`claude-web` stay in the Dashboard and never require copying cookies or tokens
+into the terminal.
 
-**opencode:**
-1. Run `opencode` setup, select `openrouter/openai/gpt-4o` or similar
-2. Configure relay when prompted (or accept pre-registered providers)
+`rinbake install` or `rinbake configure` for Codex, Claude Code, or OpenCode
+ensures the local gateway is installed and running before applying the official
+OmniRoute client configuration. Pi and OMP write the compatible local endpoint
+but do not start the service automatically; use `rinbake omniroute start` when
+needed.
+
+A migration backup is created under
+`~/.config/rinbake/migrations/<timestamp>/` when legacy relay settings are first
+converted. Unknown fields, MCP settings, and permissions are preserved.
 
 ## Using DeepSeek Models
 
-The synchronized Claude Code baseline uses the `haiku` alias with the existing
-DeepSeek-compatible relay model defaults. Pin a full model ID only when a
-relay/provider requires it.
+The synchronized Claude Code baseline uses the `haiku` alias through OmniRoute.
+Use `auto`, `auto/coding`, or a Dashboard model ID when routing to DeepSeek.
 
-These scripts support DeepSeek V4 Pro and V4 Flash across the legacy relay integrations:
+DeepSeek can also remain configured as a direct official API provider:
 
 ### Prerequisites
-DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**, you need an **Anthropic API-compatible gateway** (e.g., OpenRouter, or self-hosted One-API).
+DeepSeek's official API uses OpenAI format. Claude Code should normally reach it through OmniRoute's Anthropic-compatible gateway.
 
 ### Claude Code + DeepSeek
 1. Run `claude-code` setup
@@ -105,8 +142,8 @@ DeepSeek's official API uses OpenAI format. To use DeepSeek with **Claude Code**
 - Select model during `codex` setup
 
 ### opencode + DeepSeek
-- `deepseek/deepseek-v4-flash` is the default model
-- Uses `@ai-sdk/deepseek` provider with `DEEPSEEK_API_KEY`
+- `omniroute/auto` is the default model
+- Uses the local OmniRoute `/v1` endpoint; direct DeepSeek remains available as an explicit provider
 
 ## Structure
 
@@ -153,6 +190,9 @@ bash install.sh    # 全局安装后可直接使用 rinbake <command>
 | `rinbake install --all` | 全部安装 |
 | `rinbake configure [module...]` | 配置模块 |
 | `rinbake update [codex|claude-code]` | 更新 CLI 并迁移当前配置 |
+| `rinbake update omniroute` | 更新 OmniRoute 并保留本机状态/Provider 配置 |
+| `rinbake install omniroute` | 安装并启动 OmniRoute Gateway |
+| `rinbake omniroute <action>` | 管理 OmniRoute 服务、Provider 和客户端配置 |
 | `rinbake keys` | API Key 管理 |
 | `rinbake mcp` | MCP 服务器管理 |
 | `rinbake status` | 查看安装状态 |
@@ -172,7 +212,23 @@ rinbake configure github-cli
 rinbake update codex claude-code
 ```
 
-该命令先升级 CLI，再迁移已有设置：Codex 保留本机的 `gpt-5.6-luna`、`high` reasoning、`never` 审批和 TUI/Agent 设置；Claude Code 保留本机的 `haiku`、DeepSeek relay、`deepseek-v4-flash` 子 Agent、`max` effort 和 `bypassPermissions`。未知字段、已有权限规则和 MCP 配置会保留。
+该命令先升级 CLI，再迁移已有设置：Codex 和 Claude Code 接入本机 OmniRoute，同时保留 reasoning、审批、TUI/Agent 设置、未知字段、已有权限规则和 MCP 配置。旧中转配置会先备份到 `~/.config/rinbake/migrations/`。
+
+### OmniRoute Gateway
+
+```bash
+rinbake install omniroute
+rinbake omniroute status
+rinbake omniroute configure codex
+rinbake omniroute configure claude-code
+rinbake omniroute configure opencode
+rinbake omniroute providers
+```
+
+OmniRoute 默认运行在 `http://localhost:20128`。Codex/OpenCode 使用
+`/v1`，Claude Code 使用 Gateway 根地址。Provider 连接在 Dashboard 的
+`Providers` 页面完成，`chatgpt-web` 等需要浏览器授权的连接由
+`skills/omniroute/SKILL.md` 引导。
 
 ## Requirements
 

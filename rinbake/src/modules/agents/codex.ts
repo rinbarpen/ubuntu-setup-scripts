@@ -5,6 +5,8 @@ import { promptAndSetKey } from '../../config/keys'
 import { readConfig, writeConfig } from '../../config/manager'
 import { getMcpServers } from '../mcp'
 import type { ConfigProvider } from '../../types'
+import { configureClient, ensureReady } from '../omniroute'
+import { getOmniRouteProvider, OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
 
 export const id = 'codex'
 export const label = 'Codex CLI + Multi-Provider'
@@ -51,12 +53,15 @@ export async function update(): Promise<void> {
 }
 
 export async function configure(): Promise<void> {
+  await ensureReady()
+  await configureClient('codex')
+
   const cfgPath = `${process.env.HOME || '/root'}/.codex/config.toml`
   const cfgDir = cfgPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${cfgDir}`.nothrow()
 
   // Provider setup
-  const providers: Record<string, ConfigProvider> = {}
+  const providers: Record<string, ConfigProvider> = { omniroute: getOmniRouteProvider() }
   const addProviders = await confirm({ message: '添加模型供应商？', defaultValue: true })
 
   if (addProviders === true) {
@@ -65,8 +70,7 @@ export async function configure(): Promise<void> {
       options: [
         { value: 'openai', label: 'OpenAI', hint: 'https://api.openai.com/v1' },
         { value: 'deepseek', label: 'DeepSeek', hint: 'https://api.deepseek.com' },
-        { value: 'openrouter', label: 'OpenRouter', hint: '中转 GPT/Claude' },
-        { value: 'aihubmix', label: 'AIHubMix', hint: '中转' },
+        { value: 'omniroute', label: 'OmniRoute', hint: 'http://localhost:20128/v1' },
       ],
       required: false,
     })
@@ -76,6 +80,7 @@ export async function configure(): Promise<void> {
       : []
 
     for (const pt of selectedProviders) {
+      if (pt === 'omniroute') continue
       const prov: ConfigProvider = { id: pt, name: '', baseUrl: '', apiFormat: 'responses' }
       switch (pt) {
         case 'openai':
@@ -90,25 +95,13 @@ export async function configure(): Promise<void> {
           prov.envKey = 'DEEPSEEK_API_KEY'
           await promptAndSetKey('DEEPSEEK_API_KEY', 'DeepSeek API Key')
           break
-        case 'openrouter':
-          prov.name = 'OpenRouter'
-          prov.baseUrl = 'https://openrouter.ai/api/v1'
-          prov.envKey = 'OPENROUTER_API_KEY'
-          await promptAndSetKey('OPENROUTER_API_KEY', 'OpenRouter API Key')
-          break
-        case 'aihubmix':
-          prov.name = 'AIHubMix'
-          prov.baseUrl = 'https://aihubmix.com/v1'
-          prov.envKey = 'AIHUBMIX_API_KEY'
-          await promptAndSetKey('AIHUBMIX_API_KEY', 'AIHubMix API Key')
-          break
       }
       providers[pt] = prov
     }
   }
 
   let defaultProvider = Object.keys(providers)[0] || ''
-  let defaultModel: string = CODEX_DEFAULTS.model
+  let defaultModel: string = OMNIROUTE_DEFAULT_MODEL
   if (Object.keys(providers).length > 0) {
     const providerKeys = Object.keys(providers)
     const dp = await select({
@@ -117,7 +110,7 @@ export async function configure(): Promise<void> {
     })
     if (typeof dp === 'string') {
       defaultProvider = dp
-      const modelInput = await input({ message: `模型 ID (${providers[dp].name})`, defaultValue: CODEX_DEFAULTS.model })
+      const modelInput = await input({ message: `模型 ID (${providers[dp].name})`, defaultValue: OMNIROUTE_DEFAULT_MODEL })
       if (typeof modelInput === 'string' && modelInput.trim()) defaultModel = modelInput.trim()
     }
   }
@@ -199,12 +192,9 @@ export async function configure(): Promise<void> {
         set provider (grep -m1 '^model_provider' "$cfg" | sed 's/.*= *"\\(.*\\)"/\\1/' 2>/dev/null; or echo "openai")
     end
     switch "$provider"
-        case "openrouter"
-            read -s -P "Enter OPENROUTER_API_KEY: " key
-            set -gx OPENROUTER_API_KEY $key
-        case "aihubmix"
-            read -s -P "Enter AIHUBMIX_API_KEY: " key
-            set -gx AIHUBMIX_API_KEY $key
+        case "omniroute"
+            read -s -P "Enter OMNIROUTE_API_KEY (optional): " key
+            set -gx OMNIROUTE_API_KEY $key
         case "deepseek"
             read -s -P "Enter DEEPSEEK_API_KEY: " key
             set -gx DEEPSEEK_API_KEY $key
@@ -344,7 +334,7 @@ export async function migrateCurrentConfig(): Promise<void> {
   const old = (await file.exists()) ? await file.text() : ''
   const lines = old.split(/\r?\n/)
   const managed: Record<string, string> = {
-    model: CODEX_DEFAULTS.model,
+    model: OMNIROUTE_DEFAULT_MODEL,
     model_reasoning_effort: CODEX_DEFAULTS.reasoningEffort,
     model_reasoning_summary: 'auto',
     model_verbosity: 'medium',

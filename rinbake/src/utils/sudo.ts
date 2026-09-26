@@ -12,9 +12,11 @@ export async function sudoCheck(): Promise<void> {
 }
 
 function keepAlive(): void {
-  setInterval(() => {
+  // unref: the timer must never be the reason the process refuses to exit
+  const timer = setInterval(() => {
     $`sudo -v`.nothrow()
   }, 30000)
+  timer.unref?.()
 }
 
 export async function sudoRun(cmdStr: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -28,6 +30,8 @@ export async function sudoRun(cmdStr: string): Promise<{ exitCode: number; stdou
 
 export async function aptInstall(...packages: string[]): Promise<boolean> {
   logInfo(`安装: ${packages.join(', ')}`)
-  const result = await $`sudo apt-get install -y ${packages.join(' ')}`.nothrow()
+  // ${packages} spreads into separate argv entries; joining would pass one
+  // bogus "curl wget git" argument and apt would report nothing installed.
+  const result = await $`sudo apt-get install -y ${packages}`.nothrow()
   return result.exitCode === 0
 }

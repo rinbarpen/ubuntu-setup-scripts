@@ -21,12 +21,6 @@ export interface ConfigProvider {
   apiFormat?: 'chat' | 'responses'
 }
 
-export interface RelayConfig {
-  provider: string
-  baseUrl: string
-  envKey: string
-}
-
 export interface McpServerDef {
   id: string
   name: string

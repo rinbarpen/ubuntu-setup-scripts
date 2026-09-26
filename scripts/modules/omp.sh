@@ -49,78 +49,11 @@ else
   echo "omp" > "$OMP_CFG_DIR/.managed-by"
 fi
 
-# ---- Provider + Model (reads existing pi config if present) ----------
-OMP_PROVIDER="deepseek"
-OMP_BASE_URL="https://api.deepseek.com/v1"
-OMP_API_KEY_ENV="DEEPSEEK_API_KEY"
-
-if [[ -f "$OMP_SETTINGS" ]]; then
-  _ep=$(python3 -c "
-import json
-try:
-    c = json.load(open('$OMP_SETTINGS'))
-    print(c.get('provider', ''))
-except: pass
-" 2>/dev/null || echo "")
-  [[ -n "$_ep" ]] && OMP_PROVIDER="$_ep"
-fi
-
-if command -v whiptail &>/dev/null; then
-  _prov_info="当前: ${OMP_PROVIDER}"
-  OMP_CHOICE=$(whiptail --title "omp Provider" --menu "Select default provider:\n${_prov_info}" 22 70 10 \
-    "deepseek"    "DeepSeek (api.deepseek.com)" \
-    "openai"      "OpenAI (api.openai.com)" \
-    "openrouter"  "OpenRouter (openrouter.ai)" \
-    "aihubmix"    "AIHubMix (aihubmix.com)" \
-    "anthropic"   "Anthropic (api.anthropic.com)" \
-    "google"      "Google Gemini" \
-    "ollama"      "Ollama (local)" \
-    "inherit"     "Inherit from existing config" \
-    3>&1 1>&2 2>&3) || OMP_CHOICE="inherit"
-  [[ -n "$OMP_CHOICE" && "$OMP_CHOICE" != "inherit" ]] && OMP_PROVIDER="$OMP_CHOICE"
-fi
-
-if [[ "$OMP_PROVIDER" != "inherit" ]]; then
-  case "$OMP_PROVIDER" in
-    deepseek)
-      OMP_BASE_URL="https://api.deepseek.com/v1"
-      OMP_API_KEY_ENV="DEEPSEEK_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "DeepSeek API Key" true
-      ;;
-    openai)
-      OMP_BASE_URL="https://api.openai.com/v1"
-      OMP_API_KEY_ENV="OPENAI_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "OpenAI API Key" true
-      ;;
-    openrouter)
-      OMP_BASE_URL="https://openrouter.ai/api/v1"
-      OMP_API_KEY_ENV="OPENROUTER_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "OpenRouter API Key" true
-      ;;
-    aihubmix)
-      OMP_BASE_URL="https://aihubmix.com/v1"
-      OMP_API_KEY_ENV="AIHUBMIX_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "AIHubMix API Key" true
-      ;;
-    anthropic)
-      OMP_BASE_URL="https://api.anthropic.com/v1"
-      OMP_API_KEY_ENV="ANTHROPIC_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "Anthropic API Key" true
-      ;;
-    google)
-      OMP_BASE_URL="https://generativelanguage.googleapis.com/v1beta"
-      OMP_API_KEY_ENV="GOOGLE_API_KEY"
-      api_key_get "$OMP_API_KEY_ENV" "Google API Key" true
-      ;;
-    ollama)
-      OMP_BASE_URL="http://localhost:11434/v1"
-      OMP_API_KEY_ENV=""
-      ;;
-  esac
-fi
-
-# Model selection
-OMP_MODEL="deepseek-v4-pro"
+# ---- OmniRoute provider + model -------------------------------------
+OMP_PROVIDER="omniroute"
+OMP_BASE_URL="http://localhost:20128/v1"
+OMP_API_KEY_ENV="OMNIROUTE_API_KEY"
+OMP_MODEL="omniroute/auto"
 if [[ -f "$OMP_SETTINGS" ]]; then
   _em=$(python3 -c "
 import json
@@ -133,40 +66,12 @@ except: pass
 fi
 
 if command -v whiptail &>/dev/null; then
-  case "$OMP_PROVIDER" in
-    deepseek)
-      _model_info="当前: ${OMP_MODEL}"
-      MCHOICE=$(whiptail --title "omp Model" --menu "Select model:\n${_model_info}" 18 70 8 \
-        "deepseek-v4-pro"   "DeepSeek V4 Pro (recommended for omp)" \
-        "deepseek-v4-flash" "DeepSeek V4 Flash (fast & cheap)" \
-        "deepseek-chat"     "DeepSeek V3 Chat" \
-        "deepseek-reasoner" "DeepSeek Reasoner (R1)" \
-        "inherit"           "Keep existing model" \
-        3>&1 1>&2 2>&3) || MCHOICE="inherit"
-      ;;
-    openai)
-      _model_info="当前: ${OMP_MODEL}"
-      MCHOICE=$(whiptail --title "omp Model" --menu "Select model:\n${_model_info}" 18 70 8 \
-        "gpt-5.5"       "GPT-5.5" \
-        "gpt-4o"        "GPT-4o" \
-        "gpt-4o-mini"   "GPT-4o Mini" \
-        "inherit"       "Keep existing model" \
-        3>&1 1>&2 2>&3) || MCHOICE="inherit"
-      ;;
-    openrouter)
-      _model_info="当前: ${OMP_MODEL}"
-      MCHOICE=$(whiptail --title "omp Model" --menu "Select model:\n${_model_info}" 20 70 8 \
-        "openai/gpt-5.5"                    "GPT-5.5" \
-        "openai/gpt-4o"                     "GPT-4o" \
-        "anthropic/claude-sonnet-4-20250514" "Claude Sonnet 4" \
-        "deepseek/deepseek-v4-pro"           "DeepSeek V4 Pro" \
-        "inherit"                            "Keep existing model" \
-        3>&1 1>&2 2>&3) || MCHOICE="inherit"
-      ;;
-    *)
-      MCHOICE="inherit"
-      ;;
-  esac
+  MCHOICE=$(whiptail --title "omp Model" --menu "Select OmniRoute model:" 16 70 6 \
+    "omniroute/auto"       "OmniRoute Auto" \
+    "omniroute/auto/coding" "OmniRoute Coding" \
+    "omniroute/auto/fast"  "OmniRoute Fast" \
+    "inherit"              "Keep existing model" \
+    3>&1 1>&2 2>&3) || MCHOICE="inherit"
   [[ -n "${MCHOICE:-}" && "$MCHOICE" != "inherit" ]] && OMP_MODEL="$MCHOICE"
 fi
 
@@ -238,10 +143,10 @@ try:
 except Exception:
     config = {}
 
-provider = os.environ.get("OMP_PROVIDER", "")
-model    = os.environ.get("OMP_MODEL", "")
-base_url = os.environ.get("OMP_BASE_URL", "")
-key_env  = os.environ.get("OMP_API_KEY_ENV", "")
+provider = os.environ.get("OMP_PROVIDER", "omniroute")
+model    = os.environ.get("OMP_MODEL", "omniroute/auto")
+base_url = os.environ.get("OMP_BASE_URL", "http://localhost:20128/v1")
+key_env  = os.environ.get("OMP_API_KEY_ENV", "OMNIROUTE_API_KEY")
 
 # Only overwrite if user explicitly selected a new provider/model
 if provider and provider != "inherit":
@@ -276,7 +181,7 @@ path.write_text(json.dumps(config, indent=2) + "\n")
 print(f"omp settings written to {path}")
 PYEOF
 
-log_info "omp settings written to $OMP_SETTINGS"
+log_info "omp settings written to $OMP_SETTINGS (OmniRoute: $OMP_BASE_URL; start with rinbake omniroute start if needed)"
 
 # ---- MCP Toolkits ---------------------------------------------------
 SCENARIOS=$(mcp_select_scenarios "omp MCP Toolkits")

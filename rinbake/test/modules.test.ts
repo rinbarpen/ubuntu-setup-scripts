@@ -7,6 +7,16 @@ import { getAllModules, getModule } from '../src/modules'
 import { getMcpServers, getAllMcpIds, getMcpDef } from '../src/modules/mcp'
 import { getKey, setKey, listKeys } from '../src/config/keys'
 import { readInstalled } from '../src/config/manager'
+import { createEscScanState, scanEsc } from '../src/utils/ui'
+import {
+  OMNIROUTE_CLIENTS,
+  OMNIROUTE_PROVIDER_PRESETS,
+  OMNIROUTE_API_KEY,
+  OMNIROUTE_DEFAULT_MODEL,
+  getOmniRouteBaseUrl,
+  getOmniRouteClientUrl,
+  getOmniRouteProvider,
+} from '../src/config/omniroute'
 import {
   parseAuthStatus,
   sanitizeDiagnostic,
@@ -14,6 +24,14 @@ import {
   installGithubCli,
   configureGithubCli,
 } from '../src/modules/system/github-cli'
+import {
+  buildOrcaServiceUnit,
+  selectOrcaAsset,
+} from '../src/modules/agents/orca'
+import {
+  mergePaseoConfig,
+  paseoHostnames,
+} from '../src/modules/agents/paseo'
 
 type GhResult = { exitCode: number; stdout: string; stderr: string }
 type GhCall = { args: string[]; interactive: boolean }
@@ -138,10 +156,19 @@ describe('module registration', () => {
     expect(getModule('nonexistent')).toBeUndefined()
   })
 
+  test('vibma is removed from module registration', () => {
+    expect(getAllModules().map(module => module.id)).not.toContain('vibma')
+    expect(getModule('vibma')).toBeUndefined()
+  })
+
   test('getModule by known id', () => {
     const mod = getModule('shell')
     expect(mod).toBeDefined()
     expect(mod!.id).toBe('shell')
+  })
+
+  test('legacy relay is no longer a registered module', () => {
+    expect(getModule('relay')).toBeUndefined()
   })
 
   test('github-cli is an enabled system module with configuration', () => {
@@ -156,10 +183,124 @@ describe('module registration', () => {
     expect(typeof mod!.configure).toBe('function')
   })
 
+  test('omniroute is an enabled service module with lifecycle configuration', () => {
+    const mod = getModule('omniroute')
+    expect(mod).toBeDefined()
+    expect(mod!.id).toBe('omniroute')
+    expect(mod!.enabled).toBe(true)
+    expect(mod!.category).toBe('other')
+    expect(mod!.label).toMatch(/OmniRoute/i)
+    expect(typeof mod!.install).toBe('function')
+    expect(typeof mod!.update).toBe('function')
+    expect(typeof mod!.configure).toBe('function')
+    expect(typeof mod!.detect).toBe('function')
+  })
+
+  test('paseo and orca are registered agent modules with configuration', () => {
+    const paseo = getModule('paseo')
+    const orca = getModule('orca')
+    expect(paseo).toMatchObject({ id: 'paseo', category: 'agent', enabled: true })
+    expect(orca).toMatchObject({ id: 'orca', category: 'agent', enabled: false })
+    expect(typeof paseo!.configure).toBe('function')
+    expect(typeof orca!.configure).toBe('function')
+  })
+
   test('all modules are unique', () => {
     const modules = getAllModules()
     const ids = modules.map(m => m.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('Paseo configuration', () => {
+  test('merges daemon settings without dropping unrelated fields', () => {
+    const current = {
+      custom: { keep: true },
+      daemon: {
+        listen: '127.0.0.1:6767',
+        relay: { enabled: false, keepRelayField: 'yes' },
+        mcp: { enabled: false, keepMcpField: 'yes' },
+        auth: { password: 'HASH' },
+      },
+    }
+    const merged = mergePaseoConfig(current, {
+      listen: '0.0.0.0:6799',
+      mcpEnabled: true,
+      injectIntoAgents: true,
+      relayEnabled: true,
+      hostname: 'fixture-host',
+    })
+
+    expect(merged.custom).toEqual({ keep: true })
+    expect(merged.daemon).toMatchObject({
+      listen: '0.0.0.0:6799',
+      auth: { password: 'HASH' },
+      relay: { enabled: true, keepRelayField: 'yes' },
+      mcp: { enabled: true, injectIntoAgents: true, keepMcpField: 'yes' },
+      hostnames: ['localhost', '.localhost', 'fixture-host', '.fixture-host'],
+    })
+    expect(merged['$schema']).toContain('paseo.sh/schemas')
+    expect(merged.version).toBe(1)
+  })
+
+  test('uses localhost hostnames for local listeners', () => {
+    expect(paseoHostnames('127.0.0.1:6767')).toEqual(['localhost', '.localhost'])
+    expect(paseoHostnames('[::1]:6767')).toEqual(['localhost', '.localhost'])
+  })
+})
+
+describe('Orca installation metadata', () => {
+  test('selects Linux AppImage assets by architecture', () => {
+    expect(selectOrcaAsset('x86_64')).toBe('orca-linux.AppImage')
+    expect(selectOrcaAsset('aarch64')).toBe('orca-linux-arm64.AppImage')
+    expect(() => selectOrcaAsset('mips64')).toThrow(/不支持当前架构/)
+  })
+
+  test('builds a restartable headless service unit', () => {
+    const unit = buildOrcaServiceUnit({
+      port: 6768,
+      pairingAddress: '100.64.1.20',
+      serviceUser: 'orca',
+      serviceHome: '/home/orca',
+    })
+    expect(unit).toContain('User=orca')
+    expect(unit).toContain('ExecStart=/opt/orca/orca-linux.AppImage serve --port 6768 --pairing-address 100.64.1.20 --json')
+    expect(unit).toContain('KillMode=mixed')
+    expect(unit).toContain('RestartPreventExitStatus=3')
+  })
+})
+
+describe('OmniRoute provider and client configuration', () => {
+  test('provider presets include common API and web-auth providers', () => {
+    const ids = OMNIROUTE_PROVIDER_PRESETS.map(provider => provider.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual(expect.arrayContaining([
+      'openai', 'anthropic', 'deepseek', 'openrouter', 'gemini', 'chatgpt-web', 'custom',
+    ]))
+    expect(OMNIROUTE_PROVIDER_PRESETS.find(provider => provider.id === 'chatgpt-web')).toMatchObject({
+      auth: 'cookie',
+      manualAuth: true,
+    })
+  })
+
+  test('client endpoints use the correct OmniRoute protocol roots', () => {
+    expect(getOmniRouteBaseUrl()).toBe('http://localhost:20128')
+    expect(getOmniRouteClientUrl('codex')).toBe('http://localhost:20128/v1')
+    expect(getOmniRouteClientUrl('opencode')).toBe('http://localhost:20128/v1')
+    expect(getOmniRouteClientUrl('claude-code')).toBe('http://localhost:20128')
+    expect(OMNIROUTE_CLIENTS.codex.protocol).toBe('openai-responses')
+    expect(OMNIROUTE_CLIENTS['claude-code'].protocol).toBe('anthropic')
+  })
+
+  test('OmniRoute provider uses the local OpenAI-compatible gateway', () => {
+    expect(OMNIROUTE_DEFAULT_MODEL).toBe('auto')
+    expect(getOmniRouteProvider()).toEqual({
+      id: 'omniroute',
+      name: 'OmniRoute',
+      baseUrl: 'http://localhost:20128/v1',
+      envKey: OMNIROUTE_API_KEY,
+      apiFormat: 'responses',
+    })
   })
 })
 
@@ -552,5 +693,64 @@ describe('module structure', () => {
       expect(mod).toBeDefined()
       expect(mod!.enabled).toBe(true)
     }
+  })
+})
+
+// ─── ESC sequence handling ──────────────────────
+// Regression: arrow keys are sent as ESC [ <byte>. Treating every 0x1b byte as
+// an ESC press made `rinbake init` exit as soon as the cursor moved down twice,
+// which looked like a crash on the third list item.
+
+describe('scanEsc', () => {
+  const DOWN = [0x1b, 0x5b, 0x42] // ESC [ B
+  const UP = [0x1b, 0x5b, 0x41] // ESC [ A
+  const RIGHT = [0x1b, 0x5b, 0x43] // ESC [ C
+  const F1 = [0x1b, 0x4f, 0x50] // ESC O P
+
+  test('arrow keys never register a bare ESC', () => {
+    for (const seq of [DOWN, UP, RIGHT, F1]) {
+      const state = createEscScanState()
+      scanEsc(seq, state)
+      expect(state.pending).toBe(false)
+      expect(state.inCsi).toBe(false)
+    }
+  })
+
+  test('two arrow keys in one chunk do not register a bare ESC', () => {
+    const state = createEscScanState()
+    scanEsc([...DOWN, ...DOWN], state)
+    expect(state.pending).toBe(false)
+  })
+
+  test('repeated cursor movement stays clean', () => {
+    const state = createEscScanState()
+    for (let i = 0; i < 20; i++) scanEsc(DOWN, state)
+    for (let i = 0; i < 20; i++) scanEsc(UP, state)
+    expect(state.pending).toBe(false)
+    expect(state.inCsi).toBe(false)
+  })
+
+  test('a lone ESC stays pending for the caller to confirm', () => {
+    const state = createEscScanState()
+    scanEsc([0x1b], state)
+    expect(state.pending).toBe(true)
+  })
+
+  test('ESC split across reads is still treated as a sequence', () => {
+    const state = createEscScanState()
+    scanEsc([0x1b], state) // first read only got the ESC
+    scanEsc([0x5b], state) // second read got '['
+    expect(state.inCsi).toBe(true)
+    scanEsc([0x42], state) // final byte 'B'
+    expect(state.inCsi).toBe(false)
+    expect(state.pending).toBe(false)
+  })
+
+  test('non-escape keys are ignored', () => {
+    const state = createEscScanState()
+    // enter, space, 'a', then F3 (ESC [ 1 3 ~) which has a multi-digit body
+    scanEsc([0x0d, 0x20, 0x61, 0x1b, 0x5b, 0x31, 0x33, 0x7e], state)
+    expect(state.pending).toBe(false)
+    expect(state.inCsi).toBe(false)
   })
 })

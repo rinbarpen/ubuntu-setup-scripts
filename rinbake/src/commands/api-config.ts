@@ -3,6 +3,7 @@ import { intro, outro, multiselect, logInfo, logWarn } from '../utils/ui'
 import { promptAndSetKey } from '../config/keys'
 
 const KEY_DEFS: { name: string; label: string; secret: boolean }[] = [
+  { name: 'OMNIROUTE_API_KEY',   label: 'OmniRoute API key',                             secret: true },
   { name: 'BRAVE_API_KEY',      label: 'Brave Search API key',                      secret: true },
   { name: 'GITHUB_TOKEN',       label: 'GitHub Personal Access Token',               secret: true },
   { name: 'OPENAI_API_KEY',     label: 'OpenAI API key',                             secret: true },

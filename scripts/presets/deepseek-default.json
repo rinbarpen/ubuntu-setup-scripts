@@ -1,44 +1,44 @@
 {
   "$schema": "https://rinbarpen.dev/schemas/agent-preset-v1.json",
   "name": "deepseek-default",
-  "displayName": "DeepSeek V4 Default",
-  "description": "All agents use DeepSeek V4 models with cache optimizations enabled",
+  "displayName": "OmniRoute Auto Default",
+  "description": "All agents use OmniRoute routing with cache optimizations enabled",
   "version": 1,
   "provider": {
-    "defaultProvider": "deepseek"
+    "defaultProvider": "omniroute"
   },
   "agents": {
     "claude-code": {
       "enabled": true,
-      "model": "deepseek-v4-flash",
-      "planModel": "deepseek-v4-pro",
+      "model": "auto",
+      "planModel": "auto",
       "permissionMode": "acceptEdits"
     },
     "codex": {
       "enabled": true,
-      "model": "deepseek-v4-pro",
-      "planModel": "deepseek-v4-pro",
+      "model": "auto",
+      "planModel": "auto",
       "reasoningEffort": "medium",
       "planReasoningEffort": "xhigh",
       "approvalPolicy": "on-request"
     },
     "opencode": {
       "enabled": true,
-      "model": "deepseek/deepseek-v4-flash",
-      "planModel": "openai/gpt-5.5",
+      "model": "omniroute/auto",
+      "planModel": "omniroute/auto",
       "reasoningEffort": "xhigh"
     },
     "pi": {
       "enabled": true,
-      "model": "deepseek-v4-flash",
-      "provider": "deepseek",
+      "model": "omniroute/auto",
+      "provider": "omniroute",
       "maxTokens": 1000000,
       "cache": { "consistentPrompt": true }
     },
     "omp": {
       "enabled": true,
-      "model": "deepseek-v4-pro",
-      "provider": "deepseek",
+      "model": "omniroute/auto",
+      "provider": "omniroute",
       "features": {
         "hashAnchoredEdits": true,
         "snapcompact": true,

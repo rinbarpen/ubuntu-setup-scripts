@@ -1,4 +1,5 @@
 import { $ } from 'bun'
+import { chmodSync } from 'node:fs'
 import type { KeyEntry } from '../types'
 import { input, password, logInfo, logWarn } from '../utils/ui'
 
@@ -34,6 +35,7 @@ export async function setKey(name: string, value: string): Promise<void> {
     text += `\n${name}=${value}`
   }
   await Bun.write(KEYS_PATH, text.trim() + '\n')
+  chmodSync(KEYS_PATH, 0o600)
 }
 
 export async function listKeys(): Promise<KeyEntry[]> {

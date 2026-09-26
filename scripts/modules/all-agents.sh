@@ -5,6 +5,25 @@ source "${SCRIPT_DIR}/../lib/utils.sh"
 source "${SCRIPT_DIR}/../lib/api.sh"
 source "${SCRIPT_DIR}/../lib/mcp.sh"
 
+OMNIROUTE_BASE_URL="http://localhost:20128"
+OMNIROUTE_API_KEY_ENV="OMNIROUTE_API_KEY"
+
+prepare_omniroute() {
+  if ! command -v omniroute &>/dev/null; then
+    log_info "Installing OmniRoute..."
+    npm install -g omniroute
+  fi
+  if ! curl -fsS --max-time 1 "${OMNIROUTE_BASE_URL}/v1/models" >/dev/null 2>&1; then
+    log_info "Starting OmniRoute at ${OMNIROUTE_BASE_URL}..."
+    nohup omniroute >/tmp/rinbake-omniroute.log 2>&1 &
+    for _i in {1..20}; do
+      curl -fsS --max-time 1 "${OMNIROUTE_BASE_URL}/v1/models" >/dev/null 2>&1 && return 0
+      sleep 0.25
+    done
+    log_warn "OmniRoute is not healthy; run 'rinbake omniroute doctor' for details"
+  fi
+}
+
 need_cmd npm
 need_cmd python3
 
@@ -269,18 +288,17 @@ collect_shared_config() {
     return 0
   fi
 
-  SHARED_PROVIDER="deepseek"
+  SHARED_PROVIDER="omniroute"
 
   if command -v whiptail &>/dev/null; then
     SHARED_PROVIDER=$(whiptail --title "Default Provider" --menu \
       "Select the default provider for all agents:" 20 70 8 \
+      "omniroute"  "OmniRoute (localhost:20128)" \
       "deepseek"   "DeepSeek (api.deepseek.com)" \
       "openai"     "OpenAI (api.openai.com)" \
-      "openrouter" "OpenRouter (openrouter.ai)" \
-      "aihubmix"   "AIHubMix (aihubmix.com)" \
       "anthropic"  "Anthropic (api.anthropic.com)" \
       "custom"     "Custom provider" \
-      3>&1 1>&2 2>&3) || SHARED_PROVIDER="deepseek"
+      3>&1 1>&2 2>&3) || SHARED_PROVIDER="omniroute"
   fi
 
   export SHARED_PROVIDER
@@ -290,8 +308,7 @@ collect_shared_config() {
   case "$SHARED_PROVIDER" in
     deepseek)   api_key_get "DEEPSEEK_API_KEY" "DeepSeek API Key" true ;;
     openai)     api_key_get "OPENAI_API_KEY" "OpenAI API Key" true ;;
-    openrouter) api_key_get "OPENROUTER_API_KEY" "OpenRouter API Key" true ;;
-    aihubmix)   api_key_get "AIHUBMIX_API_KEY" "AIHubMix API Key" true ;;
+    omniroute)  api_key_get "OMNIROUTE_API_KEY" "OmniRoute API Key (optional)" true ;;
     anthropic)  api_key_get "ANTHROPIC_API_KEY" "Anthropic API Key" true ;;
   esac
 }
@@ -300,8 +317,8 @@ collect_shared_config() {
 # Each function is called only if the corresponding AGENT_SELECTED is set
 
 configure_claude_code() {
-  local model="${PRESET_CLAUDE_CODE_MODEL:-deepseek-v4-flash}"
-  local plan_model="${PRESET_CLAUDE_CODE_PLAN_MODEL:-deepseek-v4-pro}"
+  local model="${PRESET_CLAUDE_CODE_MODEL:-auto}"
+  local plan_model="${PRESET_CLAUDE_CODE_PLAN_MODEL:-auto}"
   local perm_mode="${PRESET_CLAUDE_CODE_PERMISSION_MODE:-acceptEdits}"
 
   CLAUDE_SETTINGS="$HOME/.claude/settings.json"
@@ -318,11 +335,11 @@ configure_claude_code() {
   # If no preset, prompt for model and permission mode
   if [[ "${PRESET_ACTIVE:-false}" != "true" ]] && command -v whiptail &>/dev/null; then
     model=$(whiptail --title "Claude Code Model" --menu "Select chat model:" 18 70 6 \
-      "deepseek-v4-flash" "DeepSeek V4 Flash (fast)" \
-      "deepseek-v4-pro"   "DeepSeek V4 Pro (enhanced)" \
-      "openai/gpt-5.5"    "GPT-5.5" \
+      "auto"             "OmniRoute Auto" \
+      "auto/coding"      "OmniRoute Coding" \
+      "openai/gpt-5.5"   "GPT-5.5 (direct)" \
       "custom"            "Custom model" \
-      3>&1 1>&2 2>&3) || model="deepseek-v4-flash"
+      3>&1 1>&2 2>&3) || model="auto"
     [[ "$model" == "custom" ]] && { read -r -p "Model ID: " model; }
 
     perm_mode=$(whiptail --title "Permission Mode" --menu "Select permission mode:" 14 60 3 \
@@ -341,7 +358,7 @@ configure_claude_code() {
 import json, os, pathlib, sys
 
 path = pathlib.Path(sys.argv[1])
-model = os.environ.get("CLAUDE_MODEL", "deepseek-v4-flash")
+model = os.environ.get("CLAUDE_MODEL", "auto")
 
 try:
     settings = json.loads(path.read_text())
@@ -357,8 +374,10 @@ env.setdefault("CLAUDE_CODE_ATTRIBUTION_HEADER", "0")
 env.setdefault("ENABLE_TOOL_SEARCH", "1")
 env.setdefault("DISABLE_EXTRA_USAGE_COMMAND", "1")
 env.setdefault("ANTHROPIC_MODEL", model)
+env["ANTHROPIC_BASE_URL"] = "http://localhost:20128"
+env.setdefault("ANTHROPIC_API_KEY", "{env:OMNIROUTE_API_KEY}")
 env.setdefault("ANTHROPIC_DEFAULT_SONNET_MODEL", model)
-env.setdefault("ANTHROPIC_DEFAULT_HAIKU_MODEL", "deepseek-v4-flash")
+env.setdefault("ANTHROPIC_DEFAULT_HAIKU_MODEL", "auto")
 env.setdefault("CLAUDE_CODE_SUBAGENT_MODEL", model)
 env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "1000000")
 env.setdefault("CLAUDE_CODE_EFFORT_LEVEL", "max")
@@ -376,8 +395,8 @@ PYEOF
 }
 
 configure_codex() {
-  local model="${PRESET_CODEX_MODEL:-deepseek-v4-pro}"
-  local plan_model="${PRESET_CODEX_PLAN_MODEL:-deepseek-v4-pro}"
+  local model="${PRESET_CODEX_MODEL:-auto}"
+  local plan_model="${PRESET_CODEX_PLAN_MODEL:-auto}"
   local reasoning="${PRESET_CODEX_REASONING_EFFORT:-medium}"
   local plan_reasoning="${PRESET_CODEX_PLAN_REASONING_EFFORT:-xhigh}"
   local approval="${PRESET_CODEX_APPROVAL_POLICY:-on-request}"
@@ -395,12 +414,12 @@ configure_codex() {
   # If no preset, prompt for settings
   if [[ "${PRESET_ACTIVE:-false}" != "true" ]] && command -v whiptail &>/dev/null; then
     model=$(whiptail --title "Codex Model" --menu "Select chat model:" 18 70 6 \
-      "deepseek-v4-pro"   "DeepSeek V4 Pro" \
-      "deepseek-v4-flash" "DeepSeek V4 Flash" \
-      "gpt-5.5"           "GPT-5.5" \
+      "auto"             "OmniRoute Auto" \
+      "auto/coding"      "OmniRoute Coding" \
+      "gpt-5.5"          "GPT-5.5 (direct)" \
       "gpt-4o"            "GPT-4o" \
       "custom"            "Custom model" \
-      3>&1 1>&2 2>&3) || model="deepseek-v4-pro"
+      3>&1 1>&2 2>&3) || model="auto"
     [[ "$model" == "custom" ]] && { read -r -p "Model ID: " model; }
 
     approval=$(whiptail --title "Codex Approval" --menu "Approval policy:" 14 60 3 \
@@ -428,8 +447,8 @@ try:
 except Exception:
     content = "[features]\nmemories = false\nhooks = true\nundo = false\n"
 
-model = os.environ.get("CODEX_MODEL", "deepseek-v4-pro")
-plan  = os.environ.get("CODEX_PLAN_MODEL", "deepseek-v4-pro")
+model = os.environ.get("CODEX_MODEL", "auto")
+plan  = os.environ.get("CODEX_PLAN_MODEL", "auto")
 reasoning = os.environ.get("CODEX_REASONING", "medium")
 plan_reasoning = os.environ.get("CODEX_PLAN_REASONING", "xhigh")
 approval = os.environ.get("CODEX_APPROVAL", "on-request")
@@ -443,10 +462,13 @@ def set_key(ct, key, val):
         return ct.rstrip() + f'\n{key} = "{val}"\n'
 
 content = set_key(content, "model", model)
+content = set_key(content, "model_provider", "omniroute")
 content = set_key(content, "plan_model", plan)
 content = set_key(content, "model_reasoning_effort", reasoning)
 content = set_key(content, "plan_mode_reasoning_effort", plan_reasoning)
 content = set_key(content, "approval_policy", approval)
+if "[model_providers.omniroute]" not in content:
+    content += '\n[model_providers.omniroute]\nname = "OmniRoute"\nbase_url = "http://localhost:20128/v1"\nwire_api = "responses"\nenv_key = "OMNIROUTE_API_KEY"\n'
 
 with open(path, 'w') as f:
     f.write(content)
@@ -455,8 +477,8 @@ PYEOF
 }
 
 configure_opencode() {
-  local model="${PRESET_OPENCODE_MODEL:-deepseek/deepseek-v4-flash}"
-  local plan_model="${PRESET_OPENCODE_PLAN_MODEL:-openai/gpt-5.5}"
+  local model="${PRESET_OPENCODE_MODEL:-omniroute/auto}"
+  local plan_model="${PRESET_OPENCODE_PLAN_MODEL:-omniroute/auto}"
 
   OPEN_CODE_CFG="$HOME/.config/opencode/opencode.json"
   mkdir -p "$(dirname "$OPEN_CODE_CFG")"
@@ -466,51 +488,18 @@ configure_opencode() {
 
   if [[ "${PRESET_ACTIVE:-false}" != "true" ]] && command -v whiptail &>/dev/null; then
     model=$(whiptail --title "opencode Model" --menu "Select chat model:" 20 70 8 \
-      "deepseek/deepseek-v4-flash" "DeepSeek V4 Flash" \
-      "deepseek/deepseek-v4-pro"   "DeepSeek V4 Pro" \
-      "openai/gpt-5.5"             "GPT-5.5" \
+      "omniroute/auto"             "OmniRoute Auto" \
+      "omniroute/auto/coding"      "OmniRoute Coding" \
+      "openai/gpt-5.5"             "GPT-5.5 (direct)" \
       "openai/gpt-4o"              "GPT-4o" \
-      "openrouter/anthropic/claude-sonnet-4-20250514" "Claude Sonnet 4" \
+      "omniroute/auto/fast"       "OmniRoute Fast" \
       "custom"                     "Custom model" \
-      3>&1 1>&2 2>&3) || model="deepseek/deepseek-v4-flash"
+      3>&1 1>&2 2>&3) || model="omniroute/auto"
     [[ "$model" == "custom" ]] && { read -r -p "Model (provider/model): " model; }
   fi
 
   export DEFAULT_MODEL="$model"
   export PLAN_MODEL="$plan_model"
-
-  RELAY_PROVIDER="none"
-  RELAY_BASE_URL=""
-  RELAY_KEY_NAME=""
-
-  if [[ "${PRESET_ACTIVE:-false}" != "true" ]] && command -v whiptail &>/dev/null; then
-    RELAY_PROVIDER=$(whiptail --title "opencode Relay" --menu \
-      "Relay for OpenAI/GPT models:" 14 60 4 \
-      "none"       "Direct OpenAI API" \
-      "openrouter" "OpenRouter" \
-      "aihubmix"   "AIHubMix" \
-      "custom"     "Custom relay" \
-      3>&1 1>&2 2>&3) || RELAY_PROVIDER="none"
-
-    case "$RELAY_PROVIDER" in
-      openrouter)
-        RELAY_BASE_URL="https://openrouter.ai/api/v1"
-        RELAY_KEY_NAME="OPENROUTER_API_KEY"
-        api_key_get "$RELAY_KEY_NAME" "OpenRouter API Key" true
-        ;;
-      aihubmix)
-        RELAY_BASE_URL="https://aihubmix.com/v1"
-        RELAY_KEY_NAME="AIHUBMIX_API_KEY"
-        api_key_get "$RELAY_KEY_NAME" "AIHubMix API Key" true
-        ;;
-      custom)
-        read -r -p "Relay base URL: " RELAY_BASE_URL
-        read -r -p "API key env var name: " RELAY_KEY_NAME
-        api_key_get "$RELAY_KEY_NAME" "API Key for relay" true
-        ;;
-    esac
-  fi
-  export RELAY_PROVIDER RELAY_BASE_URL RELAY_KEY_NAME
 
   python3 - "$OPEN_CODE_CFG" << 'PYEOF'
 import json, os, pathlib, sys
@@ -523,18 +512,12 @@ except Exception:
     config = {}
 
 config["$schema"] = "https://opencode.ai/config.json"
-config["model"] = os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v4-flash")
+config["model"] = os.environ.get("DEFAULT_MODEL", "omniroute/auto")
 
 provider = config.setdefault("provider", {})
+provider["omniroute"] = {"npm": "@ai-sdk/openai", "options": {"apiKey": "{env:OMNIROUTE_API_KEY}", "baseURL": "http://localhost:20128/v1"}}
 provider["deepseek"] = {"npm": "@ai-sdk/deepseek", "options": {"apiKey": "{env:DEEPSEEK_API_KEY}"}}
-
-openai_opts = {"apiKey": "{env:OPENAI_API_KEY}"}
-relay_base_url = os.environ.get("RELAY_BASE_URL", "")
-if relay_base_url:
-    openai_opts["baseURL"] = relay_base_url
-provider["openai"] = {"npm": "@ai-sdk/openai", "options": openai_opts}
-provider["openrouter"] = {"npm": "@ai-sdk/openai", "options": {"apiKey": "{env:OPENROUTER_API_KEY}", "baseURL": "https://openrouter.ai/api/v1"}}
-provider["aihubmix"] = {"npm": "@ai-sdk/openai", "options": {"apiKey": "{env:AIHUBMIX_API_KEY}", "baseURL": "https://aihubmix.com/v1"}}
+provider["openai"] = {"npm": "@ai-sdk/openai", "options": {"apiKey": "{env:OPENAI_API_KEY}"}}
 
 agent = config.setdefault("agent", {})
 plan = agent.setdefault("plan", {})
@@ -552,8 +535,8 @@ PYEOF
 }
 
 configure_pi() {
-  local model="${PRESET_PI_MODEL:-deepseek-v4-flash}"
-  local provider="${PRESET_PI_PROVIDER:-deepseek}"
+  local model="${PRESET_PI_MODEL:-omniroute/auto}"
+  local provider="omniroute"
   local max_tokens="${PRESET_PI_MAX_TOKENS:-1000000}"
 
   PI_CFG_DIR="$HOME/.pi/agent"
@@ -567,13 +550,6 @@ configure_pi() {
     log_info "Pi already installed"
   fi
 
-  case "$provider" in
-    deepseek)   api_key_get "DEEPSEEK_API_KEY" "DeepSeek API Key" true ;;
-    openai)     api_key_get "OPENAI_API_KEY" "OpenAI API Key" true ;;
-    openrouter) api_key_get "OPENROUTER_API_KEY" "OpenRouter API Key" true ;;
-    anthropic)  api_key_get "ANTHROPIC_API_KEY" "Anthropic API Key" true ;;
-  esac
-
   export PI_PROVIDER="$provider" PI_MODEL="$model" PI_MAX_TOKENS="$max_tokens"
 
   python3 - "$PI_SETTINGS" << 'PYEOF'
@@ -581,20 +557,10 @@ import json, os, pathlib, sys
 
 path = pathlib.Path(sys.argv[1])
 provider = os.environ.get("PI_PROVIDER", "deepseek")
-model    = os.environ.get("PI_MODEL", "deepseek-v4-flash")
+model    = os.environ.get("PI_MODEL", "omniroute/auto")
 
-base_urls = {
-    "deepseek": "https://api.deepseek.com/v1",
-    "openai": "https://api.openai.com/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
-    "anthropic": "https://api.anthropic.com/v1",
-}
-key_envs = {
-    "deepseek": "DEEPSEEK_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-}
+base_urls = {"omniroute": "http://localhost:20128/v1"}
+key_envs = {"omniroute": "OMNIROUTE_API_KEY"}
 
 try:
     config = json.loads(path.read_text())
@@ -618,8 +584,8 @@ PYEOF
 }
 
 configure_omp() {
-  local model="${PRESET_OMP_MODEL:-deepseek-v4-pro}"
-  local provider="${PRESET_OMP_PROVIDER:-deepseek}"
+  local model="${PRESET_OMP_MODEL:-omniroute/auto}"
+  local provider="omniroute"
   local feats="${PRESET_OMP_FEATURES:-hashAnchoredEdits,snapcompact}"
 
   OMP_CFG_DIR="$HOME/.pi/agent"
@@ -663,6 +629,8 @@ provider = os.environ.get("OMP_PROVIDER", "")
 model    = os.environ.get("OMP_MODEL", "")
 if provider:
     config["provider"] = provider
+    config["baseUrl"] = "http://localhost:20128/v1"
+    config["apiKey"] = "{env:OMNIROUTE_API_KEY}"
 if model:
     config["model"] = model
 
@@ -849,39 +817,39 @@ preset = {
     "displayName": "${preset_name}",
     "description": "User-created preset",
     "version": 1,
-    "provider": {"defaultProvider": os.environ.get("SHARED_PROVIDER", "deepseek")},
+    "provider": {"defaultProvider": os.environ.get("SHARED_PROVIDER", "omniroute")},
     "agents": {
         "claude-code": {
             "enabled": ${AGENT_SELECTED[claude-code]+true}${AGENT_SELECTED[claude-code]-false},
-            "model": os.environ.get("CLAUDE_MODEL", "deepseek-v4-flash"),
-            "planModel": os.environ.get("CLAUDE_PLAN_MODEL", "deepseek-v4-pro"),
+            "model": os.environ.get("CLAUDE_MODEL", "auto"),
+            "planModel": os.environ.get("CLAUDE_PLAN_MODEL", "auto"),
             "permissionMode": os.environ.get("PERM_MODE", "acceptEdits"),
         },
         "codex": {
             "enabled": ${AGENT_SELECTED[codex]+true}${AGENT_SELECTED[codex]-false},
-            "model": os.environ.get("CODEX_MODEL", "deepseek-v4-pro"),
-            "planModel": os.environ.get("CODEX_PLAN_MODEL", "deepseek-v4-pro"),
+            "model": os.environ.get("CODEX_MODEL", "auto"),
+            "planModel": os.environ.get("CODEX_PLAN_MODEL", "auto"),
             "reasoningEffort": os.environ.get("CODEX_REASONING", "medium"),
             "planReasoningEffort": os.environ.get("CODEX_PLAN_REASONING", "xhigh"),
             "approvalPolicy": os.environ.get("CODEX_APPROVAL", "on-request"),
         },
         "opencode": {
             "enabled": ${AGENT_SELECTED[opencode]+true}${AGENT_SELECTED[opencode]-false},
-            "model": os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v4-flash"),
-            "planModel": os.environ.get("PLAN_MODEL", "openai/gpt-5.5"),
+            "model": os.environ.get("DEFAULT_MODEL", "omniroute/auto"),
+            "planModel": os.environ.get("PLAN_MODEL", "omniroute/auto"),
             "reasoningEffort": "xhigh",
         },
         "pi": {
             "enabled": ${AGENT_SELECTED[pi]+true}${AGENT_SELECTED[pi]-false},
-            "model": os.environ.get("PI_MODEL", "deepseek-v4-flash"),
-            "provider": os.environ.get("PI_PROVIDER", "deepseek"),
+            "model": os.environ.get("PI_MODEL", "omniroute/auto"),
+            "provider": "omniroute",
             "maxTokens": 1000000,
             "cache": {"consistentPrompt": True},
         },
         "omp": {
             "enabled": ${AGENT_SELECTED[omp]+true}${AGENT_SELECTED[omp]-false},
-            "model": os.environ.get("OMP_MODEL", "deepseek-v4-pro"),
-            "provider": os.environ.get("OMP_PROVIDER", "deepseek"),
+            "model": os.environ.get("OMP_MODEL", "omniroute/auto"),
+            "provider": "omniroute",
             "features": {
                 "hashAnchoredEdits": os.environ.get("OMP_HASH_EDITS", "true") == "true",
                 "snapcompact": os.environ.get("OMP_SNAPCOMPACT", "true") == "true",
@@ -916,6 +884,9 @@ main() {
   fi
 
   detect_and_load_preset
+  if [[ -n "${AGENT_SELECTED[claude-code]:-}" || -n "${AGENT_SELECTED[codex]:-}" || -n "${AGENT_SELECTED[opencode]:-}" ]]; then
+    prepare_omniroute
+  fi
   collect_shared_config
 
   # Phase 4: Per-agent configuration

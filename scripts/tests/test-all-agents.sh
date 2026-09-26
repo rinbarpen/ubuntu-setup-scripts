@@ -73,40 +73,37 @@ OMP_HOME="$TMP_DIR/omp_home"
 ALL_HOME="$TMP_DIR/all_home"
 
 run_module "pi.sh" "$PI_HOME" \
-"deepseek
-deepseek-v4-flash
+"omniroute/auto
+omniroute/auto
 \"daily\" \"chat\"" \
 "pi.sh"
 
 run_module "pi.sh (idempotency)" "$PI_HOME" \
-"deepseek
-deepseek-v4-flash
+"omniroute/auto
+omniroute/auto
 \"daily\" \"chat\"" \
 "pi.sh"
 
 run_module "omp.sh" "$OMP_HOME" \
-"deepseek
-deepseek-v4-pro
+"omniroute/auto
 \"hashAnchoredEdits\" \"snapcompact\"
 \"daily\"" \
 "omp.sh"
 
 run_module "omp.sh (idempotency)" "$OMP_HOME" \
-"deepseek
-deepseek-v4-pro
+"omniroute/auto
 \"hashAnchoredEdits\" \"snapcompact\"
 \"daily\"" \
 "omp.sh"
 
 run_module "all-agents.sh" "$ALL_HOME" \
 "\"opencode\" \"codex\" \"claude-code\" \"pi\" \"omp\"
-deepseek
-deepseek-v4-flash
+omniroute
+auto
 acceptEdits
-deepseek-v4-pro
+auto
 on-request
-deepseek/deepseek-v4-flash
-none
+omniroute/auto
 \"daily\" \"chat\"" \
 "all-agents.sh"
 
@@ -123,8 +120,10 @@ errors = []
 pi_s = pi_h / ".pi" / "agent" / "settings.json"
 assert pi_s.exists(), "pi settings.json missing"
 pi_c = json.loads(pi_s.read_text())
-assert pi_c["model"] == "deepseek-v4-flash"
-assert pi_c["provider"] == "deepseek"
+assert pi_c["model"] == "omniroute/auto"
+assert pi_c["provider"] == "omniroute"
+assert pi_c["baseUrl"] == "http://localhost:20128/v1"
+assert pi_c["apiKey"] == "{env:OMNIROUTE_API_KEY}"
 assert pi_c["maxTokens"] == 1000000
 assert pi_c["cache"]["consistentPrompt"] == True
 assert "CLAUDE.md" in pi_c["autoLoad"]
@@ -136,12 +135,15 @@ omp_c = json.loads(omp_s.read_text())
 assert omp_c["features"]["hashAnchoredEdits"] == True
 assert omp_c["features"]["snapcompact"] == True
 assert omp_c["cache"]["hashAnchoredEdits"] == True
+assert omp_c["provider"] == "omniroute"
+assert omp_c["baseUrl"] == "http://localhost:20128/v1"
 
 # all-agents checks
 cc_s = all_h / ".claude" / "settings.json"
 assert cc_s.exists(), "claude-code settings.json missing"
 cc = json.loads(cc_s.read_text())
-assert cc["model"] == "deepseek-v4-flash"
+assert cc["model"] == "auto"
+assert cc["env"]["ANTHROPIC_BASE_URL"] == "http://localhost:20128"
 assert cc["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "1000000"
 assert cc["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
 
@@ -149,11 +151,14 @@ codex_s = all_h / ".codex" / "config.toml"
 assert codex_s.exists(), "codex config.toml missing"
 ct = codex_s.read_text()
 assert 'model = ' in ct
+assert 'model_provider = "omniroute"' in ct
+assert '[model_providers.omniroute]' in ct
 
 oc_s = all_h / ".config" / "opencode" / "opencode.json"
 assert oc_s.exists(), "opencode config missing"
 oc = json.loads(oc_s.read_text())
-assert "deepseek" in oc["model"]
+assert oc["model"] == "omniroute/auto"
+assert "omniroute" in oc["provider"]
 
 all_pi_s = all_h / ".pi" / "agent" / "settings.json"
 assert all_pi_s.exists(), "all-agents pi settings missing"

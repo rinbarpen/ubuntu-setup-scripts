@@ -1,14 +1,14 @@
 import { $ } from 'bun'
 import { hasCommand } from '../../utils'
 import { logStep, logInfo, select, input, confirm } from '../../utils/ui'
-import { promptAndSetKey } from '../../config/keys'
 import {
-  selectAgentModel, selectAgentProvider, selectAgentMcpServers, selectAgentPlanModel, selectAgentRelay,
+  selectAgentModel,
 } from '../../config/agent-config'
+import { getOmniRouteClientUrl, OMNIROUTE_API_KEY, OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
 
 export const id = 'pi'
 export const label = 'Pi Coding Agent'
-export const description = '安装 Pi CLI (Armin Ronacher) 并配置模型、技能、扩展'
+export const description = '安装 Pi CLI (Armin Ronacher) 并通过 OmniRoute 配置模型、技能、扩展'
 export const category = 'agent' as const
 export const enabled = true
 
@@ -37,14 +37,11 @@ export async function configure(): Promise<void> {
   } catch {}
 
   // Model
-  const model = await selectAgentModel({ message: '选择默认模型' })
+  const model = await selectAgentModel({ message: '选择默认模型', defaultModel: OMNIROUTE_DEFAULT_MODEL })
   if (model) settings.defaultModel = model
-
-  // Provider
-  const provider = await selectAgentProvider({ message: '选择默认供应商' })
-  if (provider) {
-    settings.defaultProvider = provider.id
-  }
+  settings.defaultProvider = 'omniroute'
+  settings.baseUrl = getOmniRouteClientUrl('opencode')
+  settings.apiKey = `{env:${OMNIROUTE_API_KEY}}`
 
   // Thinking level
   const thinkingOption = await select({
@@ -118,7 +115,7 @@ export async function configure(): Promise<void> {
   await $`mkdir -p ${cfgDir}`.nothrow()
   await Bun.write(PI_SETTINGS, JSON.stringify(settings, null, 2) + '\n')
   logInfo(`Pi 配置已写入 ${PI_SETTINGS}`)
-  logInfo('运行 pi 启动 (需先设置 API Key 环境变量)')
+  logInfo(`运行 pi 启动（OmniRoute: ${getOmniRouteClientUrl('opencode')}；如未运行请执行 rinbake omniroute start）`)
 }
 
 export async function detect(): Promise<boolean> {

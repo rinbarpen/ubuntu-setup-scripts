@@ -2,6 +2,7 @@ import { $ } from 'bun'
 import { hasCommand } from '../../utils'
 import { logStep, logInfo, select, input } from '../../utils/ui'
 import { promptAndSetKey } from '../../config/keys'
+import { OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
 
 export const id = 'hermes-agent'
 export const label = 'Hermes Agent + MCP'
@@ -28,14 +29,15 @@ export async function configure(): Promise<void> {
   const modelOption = await select({
     message: '选择默认模型',
     options: [
-      { value: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash', hint: '快速' },
-      { value: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', hint: '更强能力' },
+      { value: 'auto', label: 'OmniRoute Auto', hint: '默认' },
+      { value: 'auto/coding', label: 'OmniRoute Coding' },
+      { value: 'auto/fast', label: 'OmniRoute Fast' },
       { value: 'openai/gpt-4o', label: 'OpenAI GPT-4o' },
       { value: 'custom', label: '自定义' },
     ],
   })
 
-  let model = 'deepseek/deepseek-v4-flash'
+  let model = OMNIROUTE_DEFAULT_MODEL
   if (typeof modelOption === 'string') {
     if (modelOption === 'custom') {
       const c = await input({ message: '输入模型' })
@@ -48,22 +50,20 @@ export async function configure(): Promise<void> {
   const providerOption = await select({
     message: '选择供应商',
     options: [
-      { value: 'deepseek', label: 'DeepSeek', hint: '默认' },
+      { value: 'omniroute', label: 'OmniRoute', hint: '默认' },
+      { value: 'deepseek', label: 'DeepSeek', hint: '直连 API' },
       { value: 'openai', label: 'OpenAI' },
-      { value: 'openrouter', label: 'OpenRouter' },
       { value: 'custom', label: '自定义' },
     ],
   })
 
-  let provider = 'deepseek'
+  let provider = 'omniroute'
   if (typeof providerOption === 'string') {
     provider = providerOption
     if (providerOption === 'deepseek') {
       await promptAndSetKey('DEEPSEEK_API_KEY', 'DeepSeek API Key')
     } else if (providerOption === 'openai') {
       await promptAndSetKey('OPENAI_API_KEY', 'OpenAI API Key')
-    } else if (providerOption === 'openrouter') {
-      await promptAndSetKey('OPENROUTER_API_KEY', 'OpenRouter API Key')
     } else if (providerOption === 'custom') {
       const baseUrl = await input({ message: 'API base URL' })
       const keyName = await input({ message: 'API Key 环境变量名' })

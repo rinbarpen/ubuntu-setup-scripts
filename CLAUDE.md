@@ -11,6 +11,8 @@ bash scripts/tests/test-agent-configs.sh     # Integration test for agent config
 bash scripts/tests/test-all-agents.sh        # Integration test for pi, omp, all-agents (no sudo required)
 bash scripts/modules/all-agents.sh           # Unified: configure all 5 AI agents at once
 rinbake update codex claude-code             # Update both CLIs and migrate current settings
+rinbake install omniroute                    # Install and start OmniRoute gateway
+rinbake omniroute status                     # Check local OmniRoute health
 ./model-switch.sh list                       # List supported AI providers
 ./model-switch.sh switch <provider> [model]  # Switch Claude Code provider/model
 ./model-switch.sh status                     # Show current Claude Code model config
@@ -36,20 +38,14 @@ sudo bash create-user.sh                     # User creation wizard (SSH/FTP/SFT
 | Tooling | `git` (config, SSH key, git-lfs), `zerotier` (VPN), `zellij`, `browsers`, `vms` |
 | AI Agents | `openclaw`, `opencode`, `codex`, `claude-code`, `hermes-agent`, `pi`, `omp` |
 | Meta | `all-agents` (unified 5-agent configurator with preset system) |
-| Ecosystem | `vibma` (Figma MCP bridge), `skills` (external skill collections) |
+| Ecosystem | `skills` (external skill collections) |
 
 ### Standalone Scripts
 
-- **`model-switch.sh`** — Multi-provider model switcher for Claude Code (DeepSeek, Qwen, GLM, MiniMax, AiXor, OpenRouter, AIHubMix). Subcommands: `list`, `switch`, `status`, `backup`, `restore`.
-- **Relay (中转站) support** — All three agent modules (claude-code, codex, opencode) support configuring relay/proxy endpoints for GPT/CLAUDE models (OpenRouter, AIHubMix, custom). See each module script for details.
+- **`model-switch.sh`** — OmniRoute-first model switcher for Claude Code, with direct providers retained where explicitly configured. Subcommands: `list`, `switch`, `status`, `backup`, `restore`.
+- **OmniRoute model gateway** — Codex, Claude Code, OpenCode, Pi, and OMP use the local OmniRoute gateway for routed models. The separate HTTP proxy helpers remain unchanged.
 - **`ssh-key-setup.sh`** — Interactive SSH key generation + remote copy + SSH config entry.
 - **`create-user.sh`** — Interactive Linux user creation with SSH/FTP/SFTP and vsftpd config.
-
-### Skills (`scripts/skills/`)
-
-SKILL.md files shipped alongside modules, installed to `~/.claude/skills/`:
-- `figma-vibma/SKILL.md` — Cross-platform Vibma/Figma connection bootstrap
-- `figma-start-macos/SKILL.md` — macOS Figma session launcher
 
 ### Tests (`scripts/tests/`)
 
@@ -77,6 +73,7 @@ SKILL.md files shipped alongside modules, installed to `~/.claude/skills/`:
 - `profiles/current-machine/codex.config.toml` is the sanitized Codex snapshot.
 - `.claude/settings.json` is the project-scoped Claude Code settings snapshot.
 - `gpt-5.6-sol-unrestricted-v42.md` is the synchronized Codex instruction file.
+- `skills/omniroute/SKILL.md` is the Prompt-only OmniRoute setup/diagnostic skill.
 - Credential values and runtime account state stay outside the repository.
 
 ## Design Spec

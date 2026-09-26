@@ -2,6 +2,8 @@ import { $ } from 'bun'
 import * as fs from 'node:fs'
 import color from 'picocolors'
 import { intro, outro, select, input, logInfo, logWarn, logError, isCancelled } from '../utils/ui'
+import { ensureReady } from '../modules/omniroute'
+import { getOmniRouteClientUrl, OMNIROUTE_API_KEY, OMNIROUTE_DEFAULT_MODEL } from '../config/omniroute'
 
 const CLAUDE_SETTINGS = `${process.env.HOME || '/root'}/.claude/settings.json`
 const BACKUP_DIR = `${process.env.HOME || '/root'}/.claude/backups`
@@ -18,8 +20,7 @@ const PROVIDERS: Record<string, ProviderDef> = {
   glm:        { url: 'https://open.bigmodel.cn/api/anthropic',          models: ['glm-5', 'glm-4.7'],                                   key: 'ANTHROPIC_AUTH_TOKEN' },
   minimax:    { url: 'https://api.minimaxi.com/anthropic',              models: ['MiniMax-M2.7', 'MiniMax-M2.5'],                       key: 'ANTHROPIC_AUTH_TOKEN' },
   aixor:      { url: 'https://aixor.org',                               models: ['deepseek-v4-pro', 'qwen3.6-plus', 'glm-5', 'gpt-4o'], key: 'ANTHROPIC_AUTH_TOKEN' },
-  openrouter: { url: 'https://openrouter.ai/api/v1',                    models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/gpt-5.5', 'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-opus-4-20250514'], key: 'ANTHROPIC_API_KEY' },
-  aihubmix:   { url: 'https://aihubmix.com/v1',                         models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/gpt-5.5', 'claude-sonnet-4-20250514', 'deepseek-v4-pro'], key: 'ANTHROPIC_API_KEY' },
+  omniroute:  { url: getOmniRouteClientUrl('claude-code'),              models: [OMNIROUTE_DEFAULT_MODEL, 'auto/coding', 'auto/fast'], key: OMNIROUTE_API_KEY },
 }
 
 function printHeader(): void {
@@ -40,8 +41,7 @@ function getCurrentProvider(): string {
     if (url.includes('bigmodel')) return 'glm'
     if (url.includes('minimaxi')) return 'minimax'
     if (url.includes('aixor')) return 'aixor'
-    if (url.includes('openrouter')) return 'openrouter'
-    if (url.includes('aihubmix')) return 'aihubmix'
+    if (url.includes('localhost:20128')) return 'omniroute'
     return 'unknown'
   } catch { return 'unknown' }
 }
@@ -167,8 +167,10 @@ export async function cmdModelSwitch(args: string[]): Promise<void> {
 
     backupSettings()
 
+    if (providerName === 'omniroute') await ensureReady()
+
     let token = await readExistingToken(providerName)
-    if (!token) {
+    if (!token && providerName !== 'omniroute') {
       const tokenInput = await input({ message: `请输入 API Token (${provider.key}):` })
       if (typeof tokenInput !== 'string' || !tokenInput.trim()) {
         logError('Token 不能为空')

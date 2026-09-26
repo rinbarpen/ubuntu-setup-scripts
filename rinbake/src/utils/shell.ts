@@ -17,8 +17,9 @@ export async function run(cmdStr: string): Promise<{ exitCode: number; stdout: s
   }
 }
 
-export function appendBashrc(lines: string): string {
+export function appendBashrc(marker: string, lines: string): string {
   return `
+# rinbake: ${marker}
 # --- rinbake ---
 ${lines}
 # --- rinbake end ---`
@@ -30,8 +31,10 @@ export async function appendToBashrcIfMissing(marker: string, content: string): 
   const file = Bun.file(bashrcPath)
   const exists = await file.exists()
   const text = exists ? await file.text() : ''
-  if (text.includes(marker)) return
-  await Bun.write(bashrcPath, text + '\n' + appendBashrc(content) + '\n')
+  // The marker must be part of what we write, otherwise the dedup check never
+  // matches and every run appends another copy of the block.
+  if (text.includes(`# rinbake: ${marker}`)) return
+  await Bun.write(bashrcPath, text + '\n' + appendBashrc(marker, content) + '\n')
 }
 
 export async function writeFishFunction(name: string, body: string): Promise<void> {

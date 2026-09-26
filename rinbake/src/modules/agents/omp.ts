@@ -1,14 +1,14 @@
 import { $ } from 'bun'
 import { hasCommand } from '../../utils'
 import { logStep, logInfo, select, input, confirm } from '../../utils/ui'
-import { promptAndSetKey } from '../../config/keys'
 import {
-  selectAgentModel, selectAgentProvider, selectAgentMcpServers, selectAgentPlanModel, selectAgentRelay,
+  selectAgentModel, selectAgentPlanModel,
 } from '../../config/agent-config'
+import { getOmniRouteClientUrl, OMNIROUTE_API_KEY, OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
 
 export const id = 'omp'
 export const label = 'OMP (Oh My Pi) Coding Agent'
-export const description = '安装 OMP CLI (Pi fork) 并配置模型、LSP、调试器、MCP'
+export const description = '安装 OMP CLI (Pi fork) 并通过 OmniRoute 配置模型、LSP、调试器、MCP'
 export const category = 'agent' as const
 export const enabled = true
 
@@ -36,25 +36,25 @@ export async function configure(): Promise<void> {
   } catch {}
 
   // Model & roles
-  const model = await selectAgentModel({ message: 'OMP: 选择默认模型' })
+  const model = await selectAgentModel({ message: 'OMP: 选择默认模型', defaultModel: OMNIROUTE_DEFAULT_MODEL })
   if (model && model !== 'custom') config.defaultModel = model
 
-  const slowModel = await selectAgentModel({ message: 'OMP: 选择 Slow 模型 (重任务)' })
+  const slowModel = await selectAgentModel({ message: 'OMP: 选择 Slow 模型 (重任务)', defaultModel: OMNIROUTE_DEFAULT_MODEL })
   if (slowModel && typeof slowModel === 'string' && slowModel !== 'custom' && slowModel !== model) {
     config.slowModel = slowModel
   }
 
-  const planModel = await selectAgentPlanModel({ message: 'OMP: 选择 Plan 模型' })
+  const planModel = await selectAgentPlanModel({ message: 'OMP: 选择 Plan 模型', defaultModel: OMNIROUTE_DEFAULT_MODEL })
   if (planModel && planModel !== 'skip') config.planModel = planModel
 
-  const smolModel = await selectAgentModel({ message: 'OMP: 选择 Smol 模型 (轻任务)' })
+  const smolModel = await selectAgentModel({ message: 'OMP: 选择 Smol 模型 (轻任务)', defaultModel: OMNIROUTE_DEFAULT_MODEL })
   if (smolModel && typeof smolModel === 'string' && smolModel !== 'custom' && smolModel !== model) {
     config.smolModel = smolModel
   }
 
-  // Provider
-  const provider = await selectAgentProvider({ message: 'OMP: 选择供应商' })
-  if (provider) config.defaultProvider = provider.id
+  config.defaultProvider = 'omniroute'
+  config.baseUrl = getOmniRouteClientUrl('opencode')
+  config.apiKey = `{env:${OMNIROUTE_API_KEY}}`
 
   // Thinking
   const thinkingOption = await select({
@@ -137,7 +137,7 @@ export async function configure(): Promise<void> {
   await $`mkdir -p ${cfgDir}`.nothrow()
   await Bun.write(OMP_CONFIG, JSON.stringify(config, null, 2) + '\n')
   logInfo(`OMP 配置已写入 ${OMP_CONFIG}`)
-  logInfo('运行 omp 启动 (需先设置 API Key 环境变量)')
+  logInfo(`运行 omp 启动（OmniRoute: ${getOmniRouteClientUrl('opencode')}；如未运行请执行 rinbake omniroute start）`)
 }
 
 export async function detect(): Promise<boolean> {

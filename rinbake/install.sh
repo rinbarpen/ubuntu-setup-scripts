@@ -13,7 +13,20 @@ if ! command -v bun &>/dev/null; then
 fi
 
 echo "[INFO] 安装依赖..."
-bun install --cwd "${RINBAKE_DIR}" --frozen-lockfile 2>/dev/null || bun install --cwd "${RINBAKE_DIR}"
+
+install_deps() {
+  bun install --cwd "${RINBAKE_DIR}" "$@"
+}
+
+if ! install_deps --frozen-lockfile; then
+  # bun >=1.4 在 node_modules/.bin 已有同名链接时会以 EEXIST 失败
+  echo "[WARN] 清理残留的 node_modules/.bin 后重试..."
+  rm -rf "${RINBAKE_DIR}/node_modules/.bin"
+  install_deps || {
+    echo "[ERR] 依赖安装失败" >&2
+    exit 1
+  }
+fi
 
 echo "[INFO] 注册 bun link..."
 bun link --cwd "${RINBAKE_DIR}" 2>/dev/null || true

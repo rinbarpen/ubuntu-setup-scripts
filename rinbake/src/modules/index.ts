@@ -2,7 +2,6 @@ import type { ModuleDefinition } from '../types'
 
 import * as ubuntuBase from './system/ubuntu-base'
 import * as languages from './system/languages'
-import * as bun from './system/bun'
 import * as shell from './system/shell'
 import * as fisher from './system/fisher'
 import * as git from './system/git'
@@ -13,9 +12,9 @@ import * as codex from './agents/codex'
 import * as hermesAgent from './agents/hermes-agent'
 import * as openclaw from './agents/openclaw'
 import * as paseo from './agents/paseo'
+import * as orca from './agents/orca'
 import * as pi from './agents/pi'
 import * as omp from './agents/omp'
-import * as relay from './relay'
 import * as zerotier from './zerotier'
 import * as zellij from './zellij'
 import * as browsers from './browsers'
@@ -25,7 +24,7 @@ import * as aris from './aris'
 import * as dockerConfig from './docker-config'
 import * as firecrawl from './firecrawl'
 import * as overleaf from './overleaf'
-import * as vibma from './vibma'
+import * as omniroute from './omniroute'
 
 interface ModuleExports {
   id: string
@@ -40,10 +39,11 @@ interface ModuleExports {
 }
 
 const modules: ModuleExports[] = [
-  ubuntuBase, languages, bun, shell, fisher, git, githubCli,
-  opencode, claudeCode, codex, hermesAgent, openclaw, paseo, pi, omp,
-  relay, zerotier, zellij, browsers, vms, skills,
-  aris, dockerConfig, firecrawl, overleaf, vibma,
+  ubuntuBase, languages, shell, fisher, git, githubCli,
+  opencode, claudeCode, codex, hermesAgent, openclaw, paseo, orca, pi, omp,
+  zerotier, zellij, browsers, vms, skills,
+  aris, dockerConfig, firecrawl, overleaf,
+  omniroute,
 ]
 
 export function getAllModules(): ModuleDefinition[] {
