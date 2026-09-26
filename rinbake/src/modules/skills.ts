@@ -1,14 +1,16 @@
 import { $ } from 'bun'
 import { logStep, logInfo, multiselect, input } from '../utils/ui'
+import { targetHome } from '../utils'
 
 export const id = 'skills'
 export const label = 'Skills (外部技能集)'
 export const description = '安装外部 skill 集合到 ~/.claude/skills/'
 export const category = 'other' as const
+export const scope = 'user' as const
 export const enabled = false
 
 export async function install(): Promise<void> {
-  const skillsTarget = `${process.env.HOME || '/root'}/.claude/skills`
+  const skillsTarget = `${targetHome()}/.claude/skills`
   await $`mkdir -p ${skillsTarget}`.nothrow()
 
   const selection = await multiselect({
@@ -47,7 +49,7 @@ export async function install(): Promise<void> {
 }
 
 export async function detect(): Promise<boolean> {
-  const skillsTarget = `${process.env.HOME || '/root'}/.claude/skills`
+  const skillsTarget = `${targetHome()}/.claude/skills`
   try {
     const proc = Bun.spawnSync(['ls', '-A', skillsTarget])
     return proc.exitCode === 0 && proc.stdout.toString().trim().length > 0

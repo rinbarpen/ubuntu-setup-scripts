@@ -283,6 +283,7 @@ export const id = 'github-cli'
 export const label = 'GitHub CLI (gh)'
 export const description = '安装 GitHub CLI 并完成 GitHub 认证'
 export const category = 'system' as const
+export const scope = 'system' as const
 export const enabled = true
 
 const defaultInstallDeps: InstallDeps = {

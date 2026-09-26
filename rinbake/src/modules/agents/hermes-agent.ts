@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { logStep, logInfo, select, input } from '../../utils/ui'
 import { promptAndSetKey } from '../../config/keys'
 import { OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
@@ -8,6 +8,7 @@ export const id = 'hermes-agent'
 export const label = 'Hermes Agent + MCP'
 export const description = '安装 Hermes CLI 并配置模型、MCP'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
 export async function install(): Promise<void> {
@@ -22,7 +23,7 @@ export async function install(): Promise<void> {
 }
 
 export async function configure(): Promise<void> {
-  const configDir = `${process.env.HOME || '/root'}/.hermes`
+  const configDir = `${targetHome()}/.hermes`
   const configPath = `${configDir}/config.yaml`
   await $`mkdir -p ${configDir}`.nothrow()
 

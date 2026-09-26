@@ -6,6 +6,7 @@ export const id = 'openclaw'
 export const label = 'OpenClaw'
 export const description = '安装 openclaw 工具'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = false
 
 export async function install(): Promise<void> {

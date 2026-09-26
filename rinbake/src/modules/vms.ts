@@ -5,6 +5,7 @@ export const id = 'vms'
 export const label = 'VMs (VirtualBox + QEMU/KVM)'
 export const description = '安装 VirtualBox, QEMU/KVM 虚拟化工具'
 export const category = 'other' as const
+export const scope = 'system' as const
 export const enabled = false
 
 export async function install(): Promise<void> {

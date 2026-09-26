@@ -7,6 +7,7 @@ export const id = 'orca'
 export const label = 'Orca (Agent Development Environment)'
 export const description = '安装 Orca AppImage、CLI、Agent hooks、skills 与无头服务'
 export const category = 'agent' as const
+export const scope = 'system' as const
 export const enabled = false
 
 export const ORCA_INSTALL_DIR = '/opt/orca'

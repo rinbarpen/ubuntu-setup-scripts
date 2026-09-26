@@ -1,6 +1,6 @@
 import color from 'picocolors'
-import { intro, outro, multiselect, logInfo, logWarn, isCancelled } from '../utils/ui'
-import { sudoCheck } from '../utils/sudo'
+import { intro, outro, multiselect, logInfo, isCancelled } from '../utils/ui'
+import { ensurePrivilege, runModules, scopeHint } from '../utils/runner'
 import { getAllModules, getModule } from '../modules'
 import { markInstalled, readInstalled } from '../config/manager'
 import type { ModuleDefinition } from '../types'
@@ -8,15 +8,15 @@ import type { ModuleDefinition } from '../types'
 export async function cmdInit(): Promise<void> {
   intro(color.bgCyan(' rinbake init '))
 
-  await sudoCheck()
-
   const allModules = getAllModules()
   const installed = await readInstalled()
 
   const options = allModules.map(m => ({
     value: m.id,
     label: m.label,
-    hint: m.description,
+    // Scope is shown up front so the machine-wide blast radius is a decision,
+    // not something discovered afterwards when /etc has already changed.
+    hint: scopeHint(m),
     checked: installed.includes(m.id) ? true : m.enabled,
   }))
 
@@ -43,20 +43,10 @@ export async function cmdInit(): Promise<void> {
     .filter((m): m is ModuleDefinition => m !== undefined)
     .sort((a, b) => (categoryOrder[a.category] ?? 99) - (categoryOrder[b.category] ?? 99))
 
-  let successCount = 0
-  let failCount = 0
+  // Escalate only once the selection is known, and only if it needs root.
+  await ensurePrivilege(selectedModules)
 
-  for (const mod of selectedModules) {
-    logInfo(`[${mod.category}] ${mod.label}`)
-    try {
-      await mod.install()
-      await markInstalled(mod.id)
-      successCount++
-    } catch (err) {
-      logWarn(`${mod.id}: 失败 — ${err}`)
-      failCount++
-    }
-  }
+  const { success, failed } = await runModules(selectedModules, markInstalled)
 
-  outro(color.bold(`完成: ${successCount} 成功` + (failCount > 0 ? `, ${failCount} 失败` : '')))
+  outro(color.bold(`完成: ${success} 成功` + (failed > 0 ? `, ${failed} 失败` : '')))
 }

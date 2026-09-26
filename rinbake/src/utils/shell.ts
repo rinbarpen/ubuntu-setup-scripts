@@ -1,3 +1,4 @@
+import { targetHome } from '../utils'
 export async function hasCommand(name: string): Promise<boolean> {
   const proc = Bun.spawnSync(['which', name], { stdio: ['ignore', 'pipe', 'pipe'] })
   return proc.exitCode === 0 && proc.stdout.toString().trim().length > 0
@@ -26,7 +27,7 @@ ${lines}
 }
 
 export async function appendToBashrcIfMissing(marker: string, content: string): Promise<void> {
-  const home = process.env.HOME || '/root'
+  const home = targetHome()
   const bashrcPath = `${home}/.bashrc`
   const file = Bun.file(bashrcPath)
   const exists = await file.exists()
@@ -38,7 +39,7 @@ export async function appendToBashrcIfMissing(marker: string, content: string): 
 }
 
 export async function writeFishFunction(name: string, body: string): Promise<void> {
-  const home = process.env.HOME || '/root'
+  const home = targetHome()
   const dir = `${home}/.config/fish/functions`
   Bun.spawnSync(['mkdir', '-p', dir])
   const content = `function ${name}\n${body}\nend\n`

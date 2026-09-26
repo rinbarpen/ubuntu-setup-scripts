@@ -2,13 +2,14 @@ import { $ } from 'bun'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import crypto from 'node:crypto'
-import { hasCommand } from '../utils'
+import { hasCommand, targetHome } from '../utils'
 import { logStep, logInfo, logWarn, logError, input, confirm } from '../utils/ui'
 
 export const id = 'overleaf'
 export const label = 'Overleaf (ShareLaTeX)'
 export const description = '自托管 Overleaf LaTeX 协作平台 (Docker)'
 export const category = 'other' as const
+export const scope = 'user' as const
 export const enabled = false
 
 const SCRIPT_DIR = path.resolve(import.meta.dir, '../../..')
@@ -169,7 +170,7 @@ export async function install(): Promise<void> {
 }
 
 async function writeShellHelpers(port: string): Promise<void> {
-  const fishDir = `${process.env.HOME || '/root'}/.config/fish/functions`
+  const fishDir = `${targetHome()}/.config/fish/functions`
   await $`mkdir -p ${fishDir}`.nothrow()
 
   const fishContent = `function overleaf-compose
@@ -185,7 +186,7 @@ function overleaf-update;  overleaf-compose pull && overleaf-compose up -d; end`
 
   await Bun.write(`${fishDir}/overleaf.fish`, `function overleaf-compose\n    docker compose -f ${OVERLEAF_DIR}/docker-compose.yml $argv\nend\n`)
 
-  const bashrc = `${process.env.HOME || '/root'}/.bashrc`
+  const bashrc = `${targetHome()}/.bashrc`
   const bashContent = fs.existsSync(bashrc) ? fs.readFileSync(bashrc, 'utf-8') : ''
   if (!bashContent.includes('# overleaf (added by setup)')) {
     const append = `

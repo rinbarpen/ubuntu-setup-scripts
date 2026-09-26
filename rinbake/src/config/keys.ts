@@ -2,8 +2,9 @@ import { $ } from 'bun'
 import { chmodSync } from 'node:fs'
 import type { KeyEntry } from '../types'
 import { input, password, logInfo, logWarn } from '../utils/ui'
+import { targetHome } from '../utils'
 
-const KEYS_DIR = `${process.env.HOME || '/root'}/.config/rinbake`
+const KEYS_DIR = `${targetHome()}/.config/rinbake`
 const KEYS_PATH = `${KEYS_DIR}/keys.env`
 
 async function ensureDir(): Promise<void> {

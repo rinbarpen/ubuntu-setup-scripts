@@ -3,6 +3,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import color from 'picocolors'
 import { intro, outro, select, input, confirm, password, logInfo, logWarn, logStep, isCancelled } from '../utils/ui'
+import { targetHome } from '../utils'
 
 interface SshKeyState {
   keyType: 'ed25519' | 'rsa'
@@ -24,7 +25,7 @@ function getDefaults(): SshKeyState {
   return {
     keyType: 'ed25519',
     keyName,
-    keyPath: `${process.env.HOME || '/root'}/.ssh/${keyName}`,
+    keyPath: `${targetHome()}/.ssh/${keyName}`,
     passphrase: '',
     remoteHost: '',
     remotePort: '22',
@@ -62,7 +63,7 @@ export async function cmdSshKey(_args: string[]): Promise<void> {
     const nameInput = await input({ message: '密钥名称', defaultValue: state.keyName })
     if (typeof nameInput === 'string' && nameInput.trim()) {
       state.keyName = nameInput.trim()
-      state.keyPath = `${process.env.HOME || '/root'}/.ssh/${state.keyName}`
+      state.keyPath = `${targetHome()}/.ssh/${state.keyName}`
     }
   } else if (choices === 'type') {
     const typeChoice = await select({
@@ -94,7 +95,7 @@ export async function cmdSshKey(_args: string[]): Promise<void> {
     }
   }
 
-  await $`mkdir -p ${process.env.HOME || '/root'}/.ssh`.nothrow()
+  await $`mkdir -p ${targetHome()}/.ssh`.nothrow()
   const bits = state.keyType === 'rsa' ? '-b 4096' : ''
   const passOpt = state.passphrase ? `-N "${state.passphrase}"` : '-N ""'
   await $`ssh-keygen -t ${state.keyType} ${bits} -f ${state.keyPath} -C ${state.keyName} ${passOpt} -q`.nothrow()
@@ -134,7 +135,7 @@ export async function cmdSshKey(_args: string[]): Promise<void> {
       const alias = await input({ message: 'Host 别名', defaultValue: state.remoteHost })
       if (typeof alias === 'string' && alias.trim()) state.hostAlias = alias.trim()
 
-      const sshConfigPath = `${process.env.HOME || '/root'}/.ssh/config`
+      const sshConfigPath = `${targetHome()}/.ssh/config`
       let config = ''
       if (fs.existsSync(sshConfigPath)) config = fs.readFileSync(sshConfigPath, 'utf-8')
 

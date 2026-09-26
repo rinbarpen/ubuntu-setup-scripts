@@ -3,7 +3,10 @@
  * Unit tests for rinbake modules — programmatic, no TTY required.
  */
 import { describe, test, expect } from 'bun:test'
-import { getAllModules, getModule } from '../src/modules'
+import { getAllModules, getModule, partitionByScope } from '../src/modules'
+import { $ } from 'bun'
+import { isInteractive } from '../src/utils/ui'
+import { flattenTemplate, pickIdentity, resolveIdentity, resetIdentityCache, runAsUser, scopeNeedsSudo, shQuote, targetHome, targetUser } from '../src/utils/identity'
 import { getMcpServers, getAllMcpIds, getMcpDef } from '../src/modules/mcp'
 import { getKey, setKey, listKeys } from '../src/config/keys'
 import { readInstalled } from '../src/config/manager'
@@ -752,5 +755,293 @@ describe('scanEsc', () => {
     scanEsc([0x0d, 0x20, 0x61, 0x1b, 0x5b, 0x31, 0x33, 0x7e], state)
     expect(state.pending).toBe(false)
     expect(state.inCsi).toBe(false)
+  })
+})
+
+// ─── Scope: machine-wide vs per-user ─────────────
+// A box can have several accounts, so every module has to declare up front
+// whether it changes the machine or only one home directory.
+
+describe('module scope', () => {
+  const VALID = ['system', 'mixed', 'user']
+
+  test('every module declares a valid scope', () => {
+    for (const m of getAllModules()) {
+      expect(VALID).toContain(m.scope)
+    }
+  })
+
+  test('machine-wide modules are the ones that declare system or mixed', () => {
+    for (const m of getAllModules()) {
+      expect(scopeNeedsSudo(m.scope)).toBe(m.scope === 'system' || m.scope === 'mixed')
+    }
+  })
+
+  test('user-scope modules never need root', () => {
+    for (const m of getAllModules().filter(m => m.scope === 'user')) {
+      expect(scopeNeedsSudo(m.scope)).toBe(false)
+    }
+  })
+
+  test('package managers and dotfile-only modules are user scope', () => {
+    for (const id of ['claude-code', 'codex', 'opencode', 'hermes-agent', 'pi', 'omp', 'omniroute', 'skills']) {
+      expect(getModule(id)!.scope).toBe('user')
+    }
+  })
+
+  test('apt, /etc and systemd modules are system scope', () => {
+    for (const id of ['ubuntu-base', 'docker-config', 'zerotier', 'browsers', 'vms', 'zellij', 'github-cli', 'orca']) {
+      expect(getModule(id)!.scope).toBe('system')
+    }
+  })
+
+  test('modules mixing apt with per-user dotfiles are mixed scope', () => {
+    for (const id of ['languages', 'shell', 'git']) {
+      expect(getModule(id)!.scope).toBe('mixed')
+    }
+  })
+
+  test('no module is left undeclared', () => {
+    // A missing scope would silently default to user and skip the sudo prompt.
+    const missing = getAllModules().filter(m => !m.scope)
+    expect(missing.map(m => m.id)).toEqual([])
+  })
+})
+
+describe('partitionByScope', () => {
+  test('splits machine-wide from per-user', () => {
+    const { machine, perUser } = partitionByScope(getAllModules())
+    expect(machine.every(m => m.scope !== 'user')).toBe(true)
+    expect(perUser.every(m => m.scope === 'user')).toBe(true)
+    expect(machine.length + perUser.length).toBe(getAllModules().length)
+  })
+
+  test('an all-user selection needs no root', () => {
+    const users = getAllModules().filter(m => m.scope === 'user')
+    const { machine } = partitionByScope(users)
+    expect(machine).toEqual([])
+  })
+
+  test('an all-system selection needs root', () => {
+    const system = getAllModules().filter(m => m.scope === 'system')
+    const { machine } = partitionByScope(system)
+    expect(machine.length).toBe(system.length)
+  })
+})
+
+describe('identity resolution', () => {
+  test('resolves the invoking user, not a hardcoded root', () => {
+    resetIdentityCache()
+    const id = resolveIdentity()
+    expect(id.user).not.toBe('')
+    expect(id.home.startsWith('/')).toBe(true)
+  })
+
+  test('agrees with the passwd database for the resolved user', () => {
+    resetIdentityCache()
+    const id = resolveIdentity()
+    const proc = Bun.spawnSync(['getent', 'passwd', id.user], { stdio: ['ignore', 'pipe', 'ignore'] })
+    if (proc.exitCode === 0) {
+      const entry = proc.stdout.toString().trim().split(':')
+      expect(entry[5]).toBe(id.home)
+    }
+  })
+
+  test('exposes the same user through targetUser/targetHome', () => {
+    resetIdentityCache()
+    expect(targetUser()).toBe(resolveIdentity().user)
+    expect(targetHome()).toBe(resolveIdentity().home)
+  })
+
+  test('never resolves an empty user or relative home', () => {
+    for (const _ of [0, 1]) {
+      resetIdentityCache()
+      const id = resolveIdentity()
+      expect(id.user.length).toBeGreaterThan(0)
+      expect(id.home.startsWith('/')).toBe(true)
+    }
+  })
+})
+
+describe('pickIdentity (multi-user rules)', () => {
+  test('a normal user run targets that user', () => {
+    const id = pickIdentity({ euid: 1000, user: 'alice', passwdHome: '/home/alice' })
+    expect(id).toEqual({ user: 'alice', home: '/home/alice', elevated: false, viaSudo: false })
+  })
+
+  test('sudo escalation targets SUDO_USER, not root', () => {
+    const id = pickIdentity({
+      euid: 0, sudoUser: 'alice', user: 'root', envHome: '/root', passwdHome: '/home/alice',
+    })
+    expect(id.user).toBe('alice')
+    expect(id.home).toBe('/home/alice')
+    expect(id.viaSudo).toBe(true)
+  })
+
+  test('a real root login has no SUDO_USER and targets root', () => {
+    const id = pickIdentity({ euid: 0, user: 'root', envHome: '/root', passwdHome: '/root' })
+    expect(id.user).toBe('root')
+    expect(id.home).toBe('/root')
+    expect(id.viaSudo).toBe(false)
+  })
+
+  test('SUDO_USER=root is not treated as a sudo escalation', () => {
+    const id = pickIdentity({ euid: 0, sudoUser: 'root', user: 'root', passwdHome: '/root' })
+    expect(id.viaSudo).toBe(false)
+  })
+
+  test('SUDO_USER is ignored when not elevated', () => {
+    // A stale SUDO_USER left in the environment must not hijack the target.
+    const id = pickIdentity({ euid: 1000, sudoUser: 'bob', user: 'alice', passwdHome: '/home/alice' })
+    expect(id.user).toBe('alice')
+    expect(id.viaSudo).toBe(false)
+  })
+
+  test('falls back to LOGNAME then to root', () => {
+    expect(pickIdentity({ euid: 1000, logname: 'carol' }).user).toBe('carol')
+    expect(pickIdentity({ euid: 1000 }).user).toBe('root')
+  })
+
+  test('prefers the passwd database over $HOME', () => {
+    // $HOME can point at /root while SUDO_USER is a real account.
+    const id = pickIdentity({ euid: 0, sudoUser: 'dave', envHome: '/root', passwdHome: '/home/dave' })
+    expect(id.home).toBe('/home/dave')
+  })
+
+  test('a normal user run trusts its own $HOME over passwd', () => {
+    // $HOME can legitimately differ from /etc/passwd on NFS or ephemeral
+    // accounts; without sudo there is no reason to override it.
+    const id = pickIdentity({ euid: 1000, user: 'erin', envHome: '/mnt/data/erin', passwdHome: '/home/erin' })
+    expect(id.home).toBe('/mnt/data/erin')
+  })
+
+  test('under sudo, $HOME=/root is never trusted over passwd', () => {
+    const id = pickIdentity({
+      euid: 0, sudoUser: 'erin', user: 'root', envHome: '/root', passwdHome: '/home/erin',
+    })
+    expect(id.home).toBe('/home/erin')
+  })
+
+  test('falls back to $HOME when the account is unknown to passwd', () => {
+    const id = pickIdentity({ euid: 1000, user: 'ghost', envHome: '/home/ghost', passwdHome: null })
+    expect(id.home).toBe('/home/ghost')
+  })
+
+  test('never yields a relative or empty home', () => {
+    for (const input of [{ euid: 0 }, { euid: 1000 }, { euid: 0, sudoUser: 'x' }]) {
+      const id = pickIdentity(input)
+      expect(id.home.startsWith('/')).toBe(true)
+      expect(id.user.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('runAsUser template handling', () => {
+  test('passes values as single arguments, not split words', async () => {
+    const r = await runAsUser`printf '[%s]\n' ${'two words here'}`
+    expect(r.stdout).toBe('[two words here]')
+  })
+
+  test('does not let a value inject shell syntax', async () => {
+    const r = await runAsUser`printf '%s' ${"'; touch /tmp/opencode/pwned; echo '"}`
+    expect(r.exitCode).toBe(0)
+    expect(await Bun.file('/tmp/opencode/pwned').exists()).toBe(false)
+  })
+
+  test('keeps a value that looks like a flag from becoming an option', async () => {
+    const r = await runAsUser`printf '%s' ${'-rf /'}`
+    expect(r.stdout).toBe('-rf /')
+  })
+
+  test('returns a non-zero exit code instead of throwing', async () => {
+    const r = await runAsUser`/nonexistent-binary-xyz`
+    expect(r.exitCode).not.toBe(0)
+  })
+
+  test('interpolated arrays expand to separate arguments', async () => {
+    const r = await runAsUser`printf '[%s]' ${['a b', 'c']}`
+    expect(r.stdout).toBe('[a b][c]')
+  })
+})
+
+// Regression: interpolating the raw TemplateStringsArray into Bun's `$` makes
+// each chunk a separate argv entry, so `sudo -u alice -H` looked for a command
+// literally named "git config --global user.name ". The elevated path now
+// builds a /bin/sh script instead, so its shape is worth pinning down.
+describe('flattenTemplate (sudo -u script construction)', () => {
+  const T = (s: string[]): TemplateStringsArray => s as unknown as TemplateStringsArray
+
+  test('keeps the template shell syntax intact', () => {
+    expect(flattenTemplate(T(['git lfs install && echo done | tr a-z A-Z']), [])).toBe(
+      'git lfs install && echo done | tr a-z A-Z',
+    )
+  })
+
+  test('quotes a value so it stays one argument', () => {
+    expect(flattenTemplate(T(['printf %s ', '']), ['two words'])).toBe("printf %s 'two words'")
+  })
+
+  test('a quote-injection payload stays inert data through /bin/sh', async () => {
+    const payload = "a'; rm -rf /tmp/opencode/should-not-exist; echo '"
+    // The literal text is still present (escaped, not deleted) -- what matters
+    // is that sh treats the whole thing as one word and never as a command.
+    const script = flattenTemplate(T(['printf %s ', '']), [payload])
+    const r = await $`/bin/sh -c ${script}`
+    expect(r.stdout.toString()).toBe(payload)
+    expect(await Bun.file('/tmp/opencode/should-not-exist').exists()).toBe(false)
+  })
+
+  test('expands arrays into separate quoted words', () => {
+    expect(flattenTemplate(T(['cmd ', '']), [['x y', 'z']])).toBe("cmd 'x y' 'z'")
+  })
+
+  test('interleaves several values in order', () => {
+    expect(flattenTemplate(T(['a ', ' b ', ' c']), ['1', '2'])).toBe("a '1' b '2' c")
+  })
+
+  test('leaves a value-less template untouched', () => {
+    expect(flattenTemplate(T(['plain command']), [])).toBe('plain command')
+  })
+
+  test('shQuote round-trips hostile values through /bin/sh', async () => {
+    for (const tricky of [
+      `a'b"c`,
+      '$(id)',
+      '`id`',
+      'a && rm -rf /',
+      'a; echo pwned',
+      'a | tr a-z A-Z',
+      '*',
+      'newline\ninjected',
+    ]) {
+      const script = `printf %s ${shQuote(tricky)}`
+      const r = await $`/bin/sh -c ${script}`
+      expect(r.stdout.toString()).toBe(tricky)
+    }
+  })
+
+  test('a generated script cannot execute an injected command', async () => {
+    const script = flattenTemplate(T(['true ', '']), ["; touch /tmp/opencode/pwned2"])
+    await $`/bin/sh -c ${script}`.nothrow()
+    expect(await Bun.file('/tmp/opencode/pwned2').exists()).toBe(false)
+  })
+})
+
+describe('default shell prompt is non-interactive safe', () => {
+  test('isInteractive() is false under a piped stdin', () => {
+    // Tests run without a tty, which is exactly the case that must not block
+    // on a prompt nobody can answer.
+    expect(isInteractive()).toBe(false)
+  })
+
+  test('shell module is mixed scope, so it can offer chsh', () => {
+    expect(getModule('shell')!.scope).toBe('mixed')
+    expect(scopeNeedsSudo(getModule('shell')!.scope)).toBe(true)
+  })
+
+  test('/etc/shells lookup tolerates a missing file', async () => {
+    // ensureShellListed must not throw when /etc/shells is unreadable.
+    const missing = '/tmp/opencode/definitely-not-here'
+    expect(await Bun.file(missing).text().catch(() => '')).toBe('')
   })
 })

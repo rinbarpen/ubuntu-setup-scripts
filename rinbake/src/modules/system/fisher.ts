@@ -6,6 +6,7 @@ export const id = 'fisher'
 export const label = 'Fisher (插件管理器)'
 export const description = '安装 fisher + z, nvm, bass 插件'
 export const category = 'system' as const
+export const scope = 'user' as const
 export const enabled = true
 export const dependencies = ['shell']
 

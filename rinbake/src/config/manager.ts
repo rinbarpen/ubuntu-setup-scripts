@@ -1,7 +1,8 @@
 import { $ } from 'bun'
 import type { RinbakeConfig, ConfigProvider } from '../types'
+import { targetHome } from '../utils'
 
-const CONFIG_DIR = `${process.env.HOME || '/root'}/.config/rinbake`
+const CONFIG_DIR = `${targetHome()}/.config/rinbake`
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
 const PROVIDERS_PATH = `${CONFIG_DIR}/providers.json`
 const MCP_PATH = `${CONFIG_DIR}/mcp.json`

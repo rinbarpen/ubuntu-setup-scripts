@@ -4,9 +4,10 @@ import color from 'picocolors'
 import { intro, outro, select, input, logInfo, logWarn, logError, isCancelled } from '../utils/ui'
 import { ensureReady } from '../modules/omniroute'
 import { getOmniRouteClientUrl, OMNIROUTE_API_KEY, OMNIROUTE_DEFAULT_MODEL } from '../config/omniroute'
+import { targetHome } from '../utils'
 
-const CLAUDE_SETTINGS = `${process.env.HOME || '/root'}/.claude/settings.json`
-const BACKUP_DIR = `${process.env.HOME || '/root'}/.claude/backups`
+const CLAUDE_SETTINGS = `${targetHome()}/.claude/settings.json`
+const BACKUP_DIR = `${targetHome()}/.claude/backups`
 
 interface ProviderDef {
   url: string

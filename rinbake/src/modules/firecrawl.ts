@@ -1,16 +1,17 @@
 import { $ } from 'bun'
 import * as fs from 'node:fs'
-import { hasCommand } from '../utils'
+import { hasCommand, targetHome } from '../utils'
 import { logStep, logInfo, logError } from '../utils/ui'
 
 export const id = 'firecrawl'
 export const label = 'Firecrawl'
 export const description = 'Web 抓取工具 (Docker Compose)'
 export const category = 'other' as const
+export const scope = 'user' as const
 export const enabled = false
 
 export async function install(): Promise<void> {
-  const firecrawlDir = process.env.FIRECRAWL_DIR || `${process.env.HOME || '/root'}/.local/share/firecrawl`
+  const firecrawlDir = process.env.FIRECRAWL_DIR || `${targetHome()}/.local/share/firecrawl`
   const firecrawlPort = process.env.FIRECRAWL_PORT || '3002'
 
   logStep('Firecrawl Docker Compose 部署')
@@ -68,6 +69,6 @@ LOGGING_LEVEL=info
 }
 
 export async function detect(): Promise<boolean> {
-  const dir = process.env.FIRECRAWL_DIR || `${process.env.HOME || '/root'}/.local/share/firecrawl`
+  const dir = process.env.FIRECRAWL_DIR || `${targetHome()}/.local/share/firecrawl`
   return fs.existsSync(`${dir}/docker-compose.yaml`)
 }

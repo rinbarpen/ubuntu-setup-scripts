@@ -1,11 +1,12 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { confirm, input, logInfo, logStep, select } from '../../utils/ui'
 
 export const id = 'paseo'
 export const label = 'Paseo (Agent Orchestration)'
 export const description = '安装 Paseo CLI + daemon 配置 + MCP'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
 export interface PaseoConfigOptions {
@@ -56,7 +57,7 @@ export function mergePaseoConfig(
 }
 
 function configPath(): string {
-  return `${process.env.HOME || '/root'}/.paseo/config.json`
+  return `${targetHome()}/.paseo/config.json`
 }
 
 async function readPaseoConfig(): Promise<Record<string, unknown>> {
@@ -124,7 +125,7 @@ async function choosePaseoOptions(config: Record<string, unknown>): Promise<Pase
 }
 
 async function writeShellHelpers(): Promise<void> {
-  const home = process.env.HOME || '/root'
+  const home = targetHome()
   const fishDir = `${home}/.config/fish/functions`
   await $`mkdir -p ${fishDir}`.nothrow()
   await Bun.write(`${fishDir}/paseo_daemon.fish`, `function paseo-daemon

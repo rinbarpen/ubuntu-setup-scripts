@@ -190,6 +190,15 @@ export async function password(opts: {
   }))
 }
 
+/**
+ * True when there is a real terminal to prompt on. Piped or redirected stdin
+ * cannot answer a question, so callers should pick a default instead of
+ * blocking forever on a prompt nobody can see.
+ */
+export function isInteractive(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY)
+}
+
 export async function confirm(opts: {
   message: string
   defaultValue?: boolean

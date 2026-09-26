@@ -1,7 +1,7 @@
 import { $ } from 'bun'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { hasCommand } from '../utils'
+import { hasCommand, targetHome } from '../utils'
 import { input, logInfo, logStep, logWarn, multiselect } from '../utils/ui'
 import { promptAndSetKey } from '../config/keys'
 import {
@@ -19,9 +19,10 @@ export const id = 'omniroute'
 export const label = 'OmniRoute AI Gateway'
 export const description = '安装并管理 OmniRoute，配置 Codex、Claude Code、OpenCode 和 Provider'
 export const category = 'other' as const
+export const scope = 'user' as const
 export const enabled = true
 
-const HOME = process.env.HOME || '/root'
+const HOME = targetHome()
 const STATE_DIR = join(HOME, '.config/rinbake/omniroute')
 const STATE_PATH = join(STATE_DIR, 'config.json')
 const PID_PATH = join(STATE_DIR, 'omniroute.pid')

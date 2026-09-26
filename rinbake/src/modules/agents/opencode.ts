@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { logStep, logInfo, logWarn, select, input, confirm, multiselect } from '../../utils/ui'
 import { readConfig, writeConfig, writeMcpConfig } from '../../config/manager'
 import { promptAndSetKey } from '../../config/keys'
@@ -11,6 +11,7 @@ export const id = 'opencode'
 export const label = 'opencode CLI + MCP'
 export const description = '安装 opencode-ai 并通过 OmniRoute 配置模型、MCP 服务器'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
 export async function install(): Promise<void> {
@@ -28,7 +29,7 @@ export async function configure(): Promise<void> {
   await ensureReady()
   await configureClient('opencode')
 
-  const cfgPath = `${process.env.HOME || '/root'}/.config/opencode/opencode.json`
+  const cfgPath = `${targetHome()}/.config/opencode/opencode.json`
   const cfgDir = cfgPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${cfgDir}`.nothrow()
 

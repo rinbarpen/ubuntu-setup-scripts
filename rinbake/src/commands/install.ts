@@ -1,54 +1,48 @@
 import color from 'picocolors'
-import { intro, outro, select, logInfo, logWarn, isCancelled } from '../utils/ui'
-import { sudoCheck } from '../utils/sudo'
+import { intro, outro, select, logWarn, isCancelled } from '../utils/ui'
+import { ensurePrivilege, runModules, scopeHint } from '../utils/runner'
 import { getAllModules, getModule } from '../modules'
 import { markInstalled, readInstalled } from '../config/manager'
+import type { ModuleDefinition } from '../types'
+
+function finish(success: number, failed: number): void {
+  outro(color.bold(`${success} 成功` + (failed > 0 ? `, ${failed} 失败` : '')))
+}
 
 export async function cmdInstall(args: string[]): Promise<void> {
   intro(color.bgCyan(' rinbake install '))
 
   if (args.length > 0) {
-    // Install specific modules
-    await sudoCheck()
-    let successCount = 0
-    let failCount = 0
+    const requested: ModuleDefinition[] = []
+    let unknown = 0
     for (const id of args) {
       const mod = getModule(id)
       if (!mod) {
         logWarn(`未知模块: ${id}`)
-        failCount++
+        unknown++
         continue
       }
-      logInfo(`安装 ${mod.label}...`)
-      try {
-        await mod.install()
-        await markInstalled(mod.id)
-        successCount++
-      } catch (err) {
-        logWarn(`${id}: 失败 — ${err}`)
-        failCount++
-      }
+      requested.push(mod)
     }
-    outro(color.bold(`${successCount} 成功` + (failCount > 0 ? `, ${failCount} 失败` : '')))
+    if (requested.length === 0) {
+      finish(0, unknown)
+      return
+    }
+    await ensurePrivilege(requested)
+    const { success, failed } = await runModules(requested, markInstalled)
+    finish(success, failed + unknown)
     return
   }
 
   // Interactive selection
-  await sudoCheck()
   const installed = await readInstalled()
   const allModules = getAllModules()
-
-  const options = allModules.map(m => ({
-    value: m.id,
-    label: m.label,
-    hint: m.description,
-  }))
 
   const choices = await select({
     message: '选择要安装的模块',
     options: [
-      { value: '__all__', label: '全部安装', hint: '安装所有模块' },
-      ...options.map(o => ({ value: o.value, label: o.label, hint: o.hint })),
+      { value: '__all__', label: '全部安装', hint: '安装所有模块（含系统级，需要 sudo）' },
+      ...allModules.map(o => ({ value: o.id, label: o.label, hint: scopeHint(o) })),
     ],
   })
 
@@ -57,26 +51,20 @@ export async function cmdInstall(args: string[]): Promise<void> {
     return
   }
 
-  const ids = choices === '__all__'
-    ? allModules.map(m => m.id)
-    : [choices]
+  const ids = choices === '__all__' ? allModules.map(m => m.id) : [choices]
 
-  let successCount = 0
-  let failCount = 0
+  const selected: ModuleDefinition[] = []
   for (const id of ids) {
     if (typeof id !== 'string') continue
     const mod = getModule(id)
-    if (!mod) { logWarn(`未知: ${id}`); continue }
-    logInfo(`安装 ${mod.label}...`)
-    try {
-      await mod.install()
-      await markInstalled(mod.id)
-      successCount++
-    } catch (err) {
-      logWarn(`${id}: 失败 — ${err}`)
-      failCount++
+    if (!mod) {
+      logWarn(`未知: ${id}`)
+      continue
     }
+    selected.push(mod)
   }
 
-  outro(color.bold(`${successCount} 成功` + (failCount > 0 ? `, ${failCount} 失败` : '')))
+  await ensurePrivilege(selected)
+  const { success, failed } = await runModules(selected, markInstalled)
+  finish(success, failed)
 }

@@ -6,6 +6,7 @@ export const id = 'zerotier'
 export const label = 'ZeroTier VPN'
 export const description = '安装 ZeroTier VPN 并加入网络'
 export const category = 'other' as const
+export const scope = 'system' as const
 export const enabled = false
 
 export async function install(): Promise<void> {

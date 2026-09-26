@@ -1,6 +1,6 @@
 import { $ } from 'bun'
 import * as fs from 'node:fs'
-import { hasCommand } from '../utils'
+import { hasCommand, targetHome } from '../utils'
 import { logStep, logInfo, logWarn, confirm } from '../utils/ui'
 import { promptAndSetKey } from '../config/keys'
 
@@ -8,13 +8,14 @@ export const id = 'aris'
 export const label = 'ARIS (Auto-Research-In-Sleep)'
 export const description = 'AI 自动调研，文献综述 + 迭代优化'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = false
 
 const ARIS_REPO = 'https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep.git'
-const ARIS_DIR = `${process.env.HOME || '/root'}/.local/share/aris`
-const SKILLS_TARGET = `${process.env.HOME || '/root'}/.claude/skills`
-const CLAUDE_SETTINGS = `${process.env.HOME || '/root'}/.claude/settings.json`
-const CODEX_CFG = `${process.env.HOME || '/root'}/.codex/config.toml`
+const ARIS_DIR = `${targetHome()}/.local/share/aris`
+const SKILLS_TARGET = `${targetHome()}/.claude/skills`
+const CLAUDE_SETTINGS = `${targetHome()}/.claude/settings.json`
+const CODEX_CFG = `${targetHome()}/.codex/config.toml`
 
 export async function install(): Promise<void> {
   logStep('克隆/更新 ARIS 仓库...')

@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { logStep, logInfo, select, input, confirm, multiselect } from '../../utils/ui'
 import { promptAndSetKey } from '../../config/keys'
 import { readConfig, writeConfig } from '../../config/manager'
@@ -12,6 +12,7 @@ export const id = 'codex'
 export const label = 'Codex CLI + Multi-Provider'
 export const description = '安装 codex CLI 并配置多供应商、MCP、features'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
 const CODEX_PACKAGE = '@openai/codex'
@@ -56,7 +57,7 @@ export async function configure(): Promise<void> {
   await ensureReady()
   await configureClient('codex')
 
-  const cfgPath = `${process.env.HOME || '/root'}/.codex/config.toml`
+  const cfgPath = `${targetHome()}/.codex/config.toml`
   const cfgDir = cfgPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${cfgDir}`.nothrow()
 
@@ -180,7 +181,7 @@ export async function configure(): Promise<void> {
   }
 
   // codex-auth functions
-  const fishFuncDir = `${process.env.HOME || '/root'}/.config/fish/functions`
+  const fishFuncDir = `${targetHome()}/.config/fish/functions`
   await $`mkdir -p ${fishFuncDir}`.nothrow()
 
   await Bun.write(
@@ -327,7 +328,7 @@ function generateToml(params: TomlParams): string {
 
 /** Migrate an existing config while retaining user-defined settings. */
 export async function migrateCurrentConfig(): Promise<void> {
-  const cfgPath = `${process.env.HOME || '/root'}/.codex/config.toml`
+  const cfgPath = `${targetHome()}/.codex/config.toml`
   const cfgDir = cfgPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${cfgDir}`.nothrow()
   const file = Bun.file(cfgPath)

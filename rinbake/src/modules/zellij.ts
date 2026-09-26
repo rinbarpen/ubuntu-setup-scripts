@@ -6,6 +6,7 @@ export const id = 'zellij'
 export const label = 'Zellij (终端复用器)'
 export const description = '安装 zellij terminal multiplexer'
 export const category = 'other' as const
+export const scope = 'system' as const
 export const enabled = true
 
 export async function install(): Promise<void> {

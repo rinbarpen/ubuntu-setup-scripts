@@ -1,4 +1,5 @@
-import type { ModuleDefinition } from '../types'
+import type { ModuleDefinition, ModuleScope } from '../types'
+import { scopeNeedsSudo } from '../utils/identity'
 
 import * as ubuntuBase from './system/ubuntu-base'
 import * as languages from './system/languages'
@@ -31,6 +32,7 @@ interface ModuleExports {
   label: string
   description: string
   category: 'system' | 'agent' | 'mcp' | 'other'
+  scope: ModuleScope
   enabled: boolean
   install: () => Promise<void>
   update?: () => Promise<void>
@@ -52,6 +54,7 @@ export function getAllModules(): ModuleDefinition[] {
     label: m.label,
     description: m.description,
     category: m.category,
+    scope: m.scope,
     enabled: m.enabled,
     install: m.install,
     update: m.update,
@@ -66,4 +69,18 @@ export function getModule(id: string): ModuleDefinition | undefined {
 
 export function getModulesByCategory(category: string): ModuleDefinition[] {
   return getAllModules().filter(m => m.category === category)
+}
+
+/**
+ * Group modules into the two buckets a multi-user machine cares about: changes
+ * every account on the box will see, and changes confined to one home directory.
+ */
+export function partitionByScope(mods: ModuleDefinition[]): {
+  machine: ModuleDefinition[]
+  perUser: ModuleDefinition[]
+} {
+  const machine: ModuleDefinition[] = []
+  const perUser: ModuleDefinition[] = []
+  for (const m of mods) (scopeNeedsSudo(m.scope) ? machine : perUser).push(m)
+  return { machine, perUser }
 }

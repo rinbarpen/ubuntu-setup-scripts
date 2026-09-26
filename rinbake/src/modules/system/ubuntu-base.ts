@@ -5,6 +5,7 @@ export const id = 'ubuntu-base'
 export const label = 'Ubuntu Base (系统工具 + Docker + xrdp)'
 export const description = '安装系统基础组件、Docker、xrdp'
 export const category = 'system' as const
+export const scope = 'system' as const
 export const enabled = true
 
 export async function install(): Promise<void> {

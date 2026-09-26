@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { logStep, logInfo, select, input, confirm } from '../../utils/ui'
 import {
   selectAgentModel,
@@ -10,10 +10,11 @@ export const id = 'pi'
 export const label = 'Pi Coding Agent'
 export const description = '安装 Pi CLI (Armin Ronacher) 并通过 OmniRoute 配置模型、技能、扩展'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
-const PI_SETTINGS = `${process.env.HOME || '/root'}/.pi/agent/settings.json`
-const PI_SKILLS = `${process.env.HOME || '/root'}/.pi/agent/skills`
+const PI_SETTINGS = `${targetHome()}/.pi/agent/settings.json`
+const PI_SKILLS = `${targetHome()}/.pi/agent/skills`
 
 export async function install(): Promise<void> {
   if (await hasCommand('pi')) {
@@ -101,7 +102,7 @@ export async function configure(): Promise<void> {
   const setupSkills = await confirm({ message: '链接系统 Skills？', defaultValue: true })
   if (setupSkills === true) {
     await $`mkdir -p ${PI_SKILLS}`.nothrow()
-    const homeAgentsSkills = `${process.env.HOME || '/root'}/.agents/skills`
+    const homeAgentsSkills = `${targetHome()}/.agents/skills`
     if (await $`test -d ${homeAgentsSkills}`.nothrow().then(r => r.exitCode === 0)) {
       const skillsList = await $`ls ${homeAgentsSkills}`.text().catch(() => '')
       if (skillsList.trim()) {

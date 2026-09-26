@@ -1,5 +1,5 @@
 import { $ } from 'bun'
-import { hasCommand } from '../../utils'
+import { hasCommand, targetHome } from '../../utils'
 import { logStep, logInfo, select, input, confirm, multiselect } from '../../utils/ui'
 import { promptAndSetKey } from '../../config/keys'
 import { getMcpServers } from '../mcp'
@@ -10,6 +10,7 @@ export const id = 'claude-code'
 export const label = 'Claude Code + cc-switch'
 export const description = '安装 Claude Code CLI 并通过 OmniRoute 配置模型、profiles、MCP'
 export const category = 'agent' as const
+export const scope = 'user' as const
 export const enabled = true
 
 const CLAUDE_PACKAGE = '@anthropic-ai/claude-code'
@@ -52,7 +53,7 @@ export async function configure(): Promise<void> {
   await ensureReady()
   await configureClient('claude-code')
 
-  const settingsPath = `${process.env.HOME || '/root'}/.claude/settings.json`
+  const settingsPath = `${targetHome()}/.claude/settings.json`
   const settingsDir = settingsPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${settingsDir}`.nothrow()
 
@@ -148,7 +149,7 @@ export async function configure(): Promise<void> {
   settings.permissions = permissions
 
   // Provider profiles
-  const profilesDir = `${process.env.HOME || '/root'}/.config/cc-profiles`
+  const profilesDir = `${targetHome()}/.config/cc-profiles`
   await $`mkdir -p ${profilesDir}`.nothrow()
 
   const addProfile = await confirm({ message: '添加 provider profile？', defaultValue: false })
@@ -157,7 +158,7 @@ export async function configure(): Promise<void> {
   }
 
   // cc-switch functions
-  const fishFuncDir = `${process.env.HOME || '/root'}/.config/fish/functions`
+  const fishFuncDir = `${targetHome()}/.config/fish/functions`
   await $`mkdir -p ${fishFuncDir}`.nothrow()
 
   await Bun.write(
@@ -179,7 +180,7 @@ export async function configure(): Promise<void> {
 end\n`
   )
 
-  const home = process.env.HOME || '/root'
+  const home = targetHome()
   const bashrcPath = `${home}/.bashrc`
   const bashrcMarker = '# rinbake: cc-switch'
   const bashrcText = (await Bun.file(bashrcPath).exists()) ? await Bun.file(bashrcPath).text() : ''
@@ -303,7 +304,7 @@ export async function detect(): Promise<boolean> {
 }
 
 export async function migrateCurrentSettings(): Promise<void> {
-  const settingsPath = `${process.env.HOME || '/root'}/.claude/settings.json`
+  const settingsPath = `${targetHome()}/.claude/settings.json`
   const settingsDir = settingsPath.replace(/\/[^/]+$/, '')
   await $`mkdir -p ${settingsDir}`.nothrow()
   let settings: Record<string, unknown> = {}
@@ -343,7 +344,7 @@ export async function migrateCurrentSettings(): Promise<void> {
 
 /** User-scoped MCP servers live in ~/.claude.json in current Claude Code. */
 async function mergeClaudeMcpConfig(mcpServers: Record<string, unknown>): Promise<void> {
-  const path = `${process.env.HOME || '/root'}/.claude.json`
+  const path = `${targetHome()}/.claude.json`
   let config: Record<string, unknown> = {}
   const file = Bun.file(path)
   try {

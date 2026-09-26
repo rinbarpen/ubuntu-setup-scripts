@@ -7,6 +7,7 @@ export const id = 'docker-config'
 export const label = 'Docker Registry Mirrors'
 export const description = '配置 Docker 镜像加速器 (daemon.json)'
 export const category = 'system' as const
+export const scope = 'system' as const
 export const enabled = true
 
 const DAEMON_JSON = '/etc/docker/daemon.json'

@@ -6,6 +6,7 @@ export const id = 'browsers'
 export const label = 'Browsers (Chrome + Firefox)'
 export const description = '安装 Chrome 和 Firefox 浏览器'
 export const category = 'other' as const
+export const scope = 'system' as const
 export const enabled = false
 
 export async function install(): Promise<void> {
