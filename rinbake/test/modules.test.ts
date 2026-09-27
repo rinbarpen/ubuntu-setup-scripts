@@ -174,6 +174,11 @@ describe('module registration', () => {
     expect(getModule('relay')).toBeUndefined()
   })
 
+  test('overleaf is removed from module registration', () => {
+    expect(getAllModules().map(module => module.id)).not.toContain('overleaf')
+    expect(getModule('overleaf')).toBeUndefined()
+  })
+
   test('github-cli is an enabled system module with configuration', () => {
     const mod = getModule('github-cli')
     expect(mod).toBeDefined()

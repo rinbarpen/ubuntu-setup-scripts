@@ -24,7 +24,6 @@ import * as skills from './skills'
 import * as aris from './aris'
 import * as dockerConfig from './docker-config'
 import * as firecrawl from './firecrawl'
-import * as overleaf from './overleaf'
 import * as omniroute from './omniroute'
 
 interface ModuleExports {
@@ -44,7 +43,7 @@ const modules: ModuleExports[] = [
   ubuntuBase, languages, shell, fisher, git, githubCli,
   opencode, claudeCode, codex, hermesAgent, openclaw, paseo, orca, pi, omp,
   zerotier, zellij, browsers, vms, skills,
-  aris, dockerConfig, firecrawl, overleaf,
+  aris, dockerConfig, firecrawl,
   omniroute,
 ]
 
