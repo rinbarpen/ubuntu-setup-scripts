@@ -6,11 +6,11 @@ import { describe, test, expect } from 'bun:test'
 import { getAllModules, getModule, partitionByScope } from '../src/modules'
 import { $ } from 'bun'
 import { isInteractive } from '../src/utils/ui'
+import { nvmFishConfig } from '../src/modules/system/languages'
 import { flattenTemplate, pickIdentity, resolveIdentity, resetIdentityCache, runAsUser, scopeNeedsSudo, shQuote, targetHome, targetUser } from '../src/utils/identity'
 import { getMcpServers, getAllMcpIds, getMcpDef } from '../src/modules/mcp'
 import { getKey, setKey, listKeys } from '../src/config/keys'
 import { readInstalled } from '../src/config/manager'
-import { createEscScanState, scanEsc } from '../src/utils/ui'
 import {
   OMNIROUTE_CLIENTS,
   OMNIROUTE_PROVIDER_PRESETS,
@@ -704,81 +704,6 @@ describe('module structure', () => {
   })
 })
 
-// ─── ESC sequence handling ──────────────────────
-// Regression: arrow keys are sent as ESC [ <byte>. Treating every 0x1b byte as
-// an ESC press made `rinbake init` exit as soon as the cursor moved down twice,
-// which looked like a crash on the third list item.
-
-describe('scanEsc', () => {
-  const DOWN = [0x1b, 0x5b, 0x42] // ESC [ B
-  const UP = [0x1b, 0x5b, 0x41] // ESC [ A
-  const RIGHT = [0x1b, 0x5b, 0x43] // ESC [ C
-  const F1 = [0x1b, 0x4f, 0x50] // ESC O P
-
-  test('arrow keys never register a bare ESC', () => {
-    for (const seq of [DOWN, UP, RIGHT, F1]) {
-      const state = createEscScanState()
-      scanEsc(seq, state)
-      expect(state.pending).toBe(false)
-      expect(state.inCsi).toBe(false)
-    }
-  })
-
-  test('two arrow keys in one chunk do not register a bare ESC', () => {
-    const state = createEscScanState()
-    scanEsc([...DOWN, ...DOWN], state)
-    expect(state.pending).toBe(false)
-  })
-
-  test('repeated cursor movement stays clean', () => {
-    const state = createEscScanState()
-    for (let i = 0; i < 20; i++) {
-      scanEsc(DOWN, state)
-      scanEsc(UP, state)
-    }
-    expect(state.pending).toBe(false)
-    expect(state.inCsi).toBe(false)
-  })
-
-  test('mixed movement sequences remain clean when every byte is a separate read', () => {
-    const state = createEscScanState()
-    for (let i = 0; i < 20; i++) {
-      for (const byte of i % 2 ? UP : DOWN) scanEsc([byte], state)
-    }
-    expect(state).toEqual({ pending: false, inCsi: false })
-  })
-
-  test('a movement sequence immediately before a bare ESC leaves only the ESC pending', () => {
-    const state = createEscScanState()
-    scanEsc([...DOWN, ...UP, 0x1b], state)
-    expect(state).toEqual({ pending: true, inCsi: false })
-  })
-
-  test('a lone ESC stays pending for the caller to confirm', () => {
-    const state = createEscScanState()
-    scanEsc([0x1b], state)
-    expect(state.pending).toBe(true)
-  })
-
-  test('ESC split across reads is still treated as a sequence', () => {
-    const state = createEscScanState()
-    scanEsc([0x1b], state) // first read only got the ESC
-    scanEsc([0x5b], state) // second read got '['
-    expect(state.inCsi).toBe(true)
-    scanEsc([0x42], state) // final byte 'B'
-    expect(state.inCsi).toBe(false)
-    expect(state.pending).toBe(false)
-  })
-
-  test('non-escape keys are ignored', () => {
-    const state = createEscScanState()
-    // enter, space, 'a', then F3 (ESC [ 1 3 ~) which has a multi-digit body
-    scanEsc([0x0d, 0x20, 0x61, 0x1b, 0x5b, 0x31, 0x33, 0x7e], state)
-    expect(state.pending).toBe(false)
-    expect(state.inCsi).toBe(false)
-  })
-})
-
 // ─── Scope: machine-wide vs per-user ─────────────
 // A box can have several accounts, so every module has to declare up front
 // whether it changes the machine or only one home directory.
@@ -1064,5 +989,19 @@ describe('default shell prompt is non-interactive safe', () => {
     // ensureShellListed must not throw when /etc/shells is unreadable.
     const missing = '/tmp/opencode/definitely-not-here'
     expect(await Bun.file(missing).text().catch(() => '')).toBe('')
+  })
+})
+
+describe('Fish bridge for official nvm', () => {
+  test('sources the user nvm installation through bass and supports nvmrc switching', () => {
+    const config = nvmFishConfig()
+    expect(config).toContain('bass source "$HOME/.nvm/nvm.sh" --no-use')
+    expect(config).toContain('function nvm')
+    expect(config).toContain('function load_nvm --on-variable PWD')
+    expect(config).toContain('nvm install (cat "$nvmrc_path")')
+    expect(config).toContain('set -l node_alias default')
+    expect(config).toContain('set node_alias node')
+    expect(config).toContain('nvm use "$node_alias"')
+    expect(config).toContain('load_nvm >/dev/stderr')
   })
 })

@@ -4,7 +4,7 @@ import { logStep, logInfo } from '../../utils/ui'
 
 export const id = 'fisher'
 export const label = 'Fisher (插件管理器)'
-export const description = '安装 fisher + z, nvm, bass 插件'
+export const description = '安装 fisher + z, bass 插件'
 export const category = 'system' as const
 export const scope = 'user' as const
 export const enabled = true
@@ -24,7 +24,7 @@ export async function install(): Promise<void> {
     logStep('fisher 已安装')
   }
 
-  await $`fish -c "fisher install jethrokuan/z edc/bass nvm-community/fish-nvm"`.nothrow()
+  await $`fish -c "fisher install jethrokuan/z edc/bass"`.nothrow()
   logInfo('fisher: 完成')
 }
 

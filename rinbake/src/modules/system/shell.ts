@@ -1,6 +1,7 @@
 import { $ } from 'bun'
 import { aptInstall, hasCommand, targetHome, targetUser, writeAsUser } from '../../utils'
 import { logStep, logInfo, logWarn, input, confirm, isInteractive } from '../../utils/ui'
+import { configureFishNvm } from './languages'
 
 export const id = 'shell'
 export const label = 'Shell (fish + proxy)'
@@ -88,6 +89,10 @@ export async function install(): Promise<void> {
     logStep('安装 fish shell...')
     await aptInstall('fish')
   }
+
+  // languages runs before shell in the init list, so Fish may not exist yet
+  // when its first nvm setup pass runs. Repeat the idempotent bridge setup now.
+  await configureFishNvm(targetHome())
 
   await offerDefaultShell()
 
