@@ -370,7 +370,7 @@ settings["model"] = model
 env = settings.setdefault("env", {})
 env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
 env.setdefault("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK", "1")
-env.setdefault("CLAUDE_CODE_ATTRIBUTION_HEADER", "0")
+env.pop("CLAUDE_CODE_ATTRIBUTION_HEADER", None)
 env.setdefault("ENABLE_TOOL_SEARCH", "1")
 env.setdefault("DISABLE_EXTRA_USAGE_COMMAND", "1")
 env.setdefault("ANTHROPIC_MODEL", model)

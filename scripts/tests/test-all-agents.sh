@@ -9,7 +9,7 @@ STUB_BIN="$TMP_DIR/bin"
 mkdir -p "$STUB_BIN"
 
 # ---- Stub binaries --------------------------------------------------
-for cmd in npm whiptail; do
+for cmd in npm whiptail curl omniroute claude; do
   cat > "$STUB_BIN/$cmd" <<EOF
 #!/usr/bin/env bash
 echo "stub \$cmd \$*" >> "${TMP_DIR}/stub.log"
@@ -107,6 +107,49 @@ omniroute/auto
 \"daily\" \"chat\"" \
 "all-agents.sh"
 
+# Check the fresh default before exercising stale values in independent homes.
+python3 - "$ALL_HOME" << 'PYEOF'
+import json, pathlib, sys
+settings = json.loads((pathlib.Path(sys.argv[1]) / ".claude/settings.json").read_text())
+assert "CLAUDE_CODE_ATTRIBUTION_HEADER" not in settings["env"]
+PYEOF
+
+for old_value in 0 1; do
+  CLEANUP_HOME="$TMP_DIR/all_home_cleanup_$old_value"
+  mkdir -p "$CLEANUP_HOME/.claude"
+  cp "$ALL_HOME/.claude/settings.json" "$CLEANUP_HOME/.claude/settings.json"
+  python3 - "$CLEANUP_HOME" "$old_value" << 'PYEOF'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1]) / ".claude/settings.json"
+settings = json.loads(path.read_text())
+settings["env"]["CLAUDE_CODE_ATTRIBUTION_HEADER"] = sys.argv[2]
+settings["env"]["CUSTOM_ENV"] = "keep"
+settings["permissions"]["allow"] = ["Read"]
+settings["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": "echo fixture"}]}]}
+settings["customField"] = {"keep": True}
+path.write_text(json.dumps(settings) + "\n")
+PYEOF
+  run_module "all-agents.sh (cleanup $old_value)" "$CLEANUP_HOME" \
+"\"opencode\" \"codex\" \"claude-code\" \"pi\" \"omp\"
+omniroute
+auto
+acceptEdits
+auto
+on-request
+omniroute/auto
+\"daily\" \"chat\"" \
+"all-agents.sh"
+  python3 - "$CLEANUP_HOME" << 'PYEOF'
+import json, pathlib, sys
+settings = json.loads((pathlib.Path(sys.argv[1]) / ".claude/settings.json").read_text())
+assert "CLAUDE_CODE_ATTRIBUTION_HEADER" not in settings["env"]
+assert settings["env"]["CUSTOM_ENV"] == "keep"
+assert settings["permissions"]["allow"] == ["Read"]
+assert settings["hooks"]["Stop"][0]["hooks"][0]["command"] == "echo fixture"
+assert settings["customField"] == {"keep": True}
+PYEOF
+done
+
 # ---- Validation --------------------------------------------------
 python3 << PYEOF
 import json, pathlib
@@ -146,6 +189,7 @@ assert cc["model"] == "auto"
 assert cc["env"]["ANTHROPIC_BASE_URL"] == "http://localhost:20128"
 assert cc["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "1000000"
 assert cc["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+assert "CLAUDE_CODE_ATTRIBUTION_HEADER" not in cc["env"]
 
 codex_s = all_h / ".codex" / "config.toml"
 assert codex_s.exists(), "codex config.toml missing"

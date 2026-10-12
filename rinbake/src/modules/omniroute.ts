@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { hasCommand, targetHome } from '../utils'
 import { input, logInfo, logStep, logWarn, multiselect } from '../utils/ui'
 import { promptAndSetKey } from '../config/keys'
+import { applyClaudeAttribution } from '../config/claude-attribution'
 import {
   OMNIROUTE_API_KEY,
   OMNIROUTE_DEFAULT_PORT,
@@ -261,6 +262,25 @@ export async function configureClient(client: OmniRouteClient): Promise<number> 
   if (result.exitCode !== 0) {
     logWarn(`OmniRoute 客户端配置失败: ${client}`)
     return result.exitCode
+  }
+  if (client === 'claude-code') {
+    const settingsPath = join(HOME, '.claude/settings.json')
+    if (existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+        const env = settings.env
+        if (env && typeof env === 'object' && !Array.isArray(env)) {
+          const before = JSON.stringify(env)
+          applyClaudeAttribution(env)
+          if (JSON.stringify(env) !== before) {
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+          }
+        }
+      } catch {
+        logWarn('OmniRoute 已配置客户端，但 Claude Code attribution 设置同步失败')
+        return 1
+      }
+    }
   }
   logInfo(`${OMNIROUTE_CLIENTS[client].label} 已交给 OmniRoute 配置`)
   return 0

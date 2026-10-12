@@ -5,6 +5,7 @@ import { promptAndSetKey } from '../../config/keys'
 import { getMcpServers } from '../mcp'
 import { configureClient, ensureReady } from '../omniroute'
 import { getOmniRouteClientUrl, OMNIROUTE_DEFAULT_MODEL } from '../../config/omniroute'
+import { applyClaudeAttribution } from '../../config/claude-attribution'
 
 export const id = 'claude-code'
 export const label = 'Claude Code + cc-switch'
@@ -126,7 +127,6 @@ export async function configure(): Promise<void> {
   const env: Record<string, string> = (settings.env as Record<string, string>) || {}
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK = '1'
-  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   env.ENABLE_TOOL_SEARCH = '1'
   env.DISABLE_EXTRA_USAGE_COMMAND = '1'
   env.ANTHROPIC_BASE_URL = CLAUDE_DEFAULTS.baseUrl
@@ -142,6 +142,7 @@ export async function configure(): Promise<void> {
       ? 'claude-opus-5'
       : planModel === 'sonnet' ? 'claude-sonnet-5' : planModel
   }
+  applyClaudeAttribution(env)
   settings.env = env
 
   const permissions = (settings.permissions as Record<string, unknown>) || {}
@@ -333,6 +334,7 @@ export async function migrateCurrentSettings(): Promise<void> {
   env.CLAUDE_CODE_EFFORT_LEVEL = CLAUDE_DEFAULTS.effort
   env.ANTHROPIC_DEFAULT_SONNET_MODEL = CLAUDE_DEFAULTS.sonnetModel
   env.ANTHROPIC_DEFAULT_HAIKU_MODEL = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || CLAUDE_DEFAULTS.haikuModel
+  applyClaudeAttribution(env)
   settings.env = env
   const permissions = (settings.permissions as Record<string, unknown>) || {}
   if (permissions.defaultMode === 'bypass') permissions.defaultMode = 'bypassPermissions'

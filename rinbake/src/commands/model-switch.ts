@@ -5,6 +5,7 @@ import { intro, outro, select, input, logInfo, logWarn, logError, isCancelled } 
 import { ensureReady } from '../modules/omniroute'
 import { getOmniRouteClientUrl, OMNIROUTE_API_KEY, OMNIROUTE_DEFAULT_MODEL } from '../config/omniroute'
 import { targetHome } from '../utils'
+import { applyClaudeAttribution } from '../config/claude-attribution'
 
 const CLAUDE_SETTINGS = `${targetHome()}/.claude/settings.json`
 const BACKUP_DIR = `${targetHome()}/.claude/backups`
@@ -94,12 +95,12 @@ function writeSettings(provider: string, model: string, token: string): void {
       CLAUDE_CODE_EFFORT_LEVEL: 'max',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
-      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       ENABLE_TOOL_SEARCH: '1',
       DISABLE_EXTRA_USAGE_COMMAND: '1',
     },
   }
 
+  applyClaudeAttribution(settings.env)
   fs.writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + '\n')
   logInfo(`配置已更新: ${provider} / ${model}`)
   logInfo('重启 Claude Code 生效')
